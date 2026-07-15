@@ -20,22 +20,56 @@ export default function Home() {
   const [listening, setListening] = useState(false);
   const [message, setMessage] = useState("Tap and say a word");
   const [saved, setSaved] = useState<string[]>([]);
+  const [teacherVoice, setTeacherVoice] = useState<SpeechSynthesisVoice | null>(null);
 
   useEffect(() => {
     const old = localStorage.getItem("say-see-favourites");
     if (old) setSaved(JSON.parse(old));
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
+
+    if ("speechSynthesis" in window) {
+      const chooseTeacherVoice = () => {
+        const voices = speechSynthesis.getVoices().filter((voice) => voice.lang.toLowerCase().startsWith("en"));
+        const preferredNames = [
+          "samantha", "ava", "aria", "jenny", "zira", "susan", "serena",
+          "google uk english female", "google us english", "female"
+        ];
+        const scored = voices
+          .map((voice) => ({
+            voice,
+            score:
+              (preferredNames.findIndex((name) => voice.name.toLowerCase().includes(name)) >= 0
+                ? 100 - preferredNames.findIndex((name) => voice.name.toLowerCase().includes(name))
+                : 0) +
+              (voice.lang.toLowerCase() === "en-us" ? 8 : 0) +
+              (voice.localService ? 2 : 0),
+          }))
+          .sort((a, b) => b.score - a.score);
+        setTeacherVoice(scored[0]?.voice ?? voices[0] ?? null);
+      };
+      chooseTeacherVoice();
+      speechSynthesis.addEventListener("voiceschanged", chooseTeacherVoice);
+      return () => speechSynthesis.removeEventListener("voiceschanged", chooseTeacherVoice);
+    }
   }, []);
 
   const letters = useMemo(() => selected.word.toUpperCase().split(""), [selected]);
 
-  function speak(text = selected.word) {
+  function speak(text = selected.word, rate = 0.76) {
     if (!("speechSynthesis" in window)) return;
     speechSynthesis.cancel();
-    const voice = new SpeechSynthesisUtterance(text);
-    voice.rate = 0.78;
-    voice.pitch = 1.08;
-    speechSynthesis.speak(voice);
+    const utterance = new SpeechSynthesisUtterance(text);
+    if (teacherVoice) utterance.voice = teacherVoice;
+    utterance.lang = teacherVoice?.lang || "en-US";
+    utterance.rate = rate;
+    utterance.pitch = 1.04;
+    utterance.volume = 1;
+    speechSynthesis.speak(utterance);
+  }
+
+  function speakLesson(item: KidWord, praise = "Wonderful!") {
+    const spelling = item.word.toUpperCase().split("").join(". ");
+    speak(`${praise} ${item.word}. ${spelling}. ${item.sentence}`, 0.72);
   }
 
   function chooseWord(raw: string) {
@@ -44,7 +78,7 @@ export default function Home() {
     if (!match) { setMessage("Try one of the friendly words below!"); return; }
     setSelected(match);
     setMessage(`Wonderful! You said ${match.word}.`);
-    setTimeout(() => speak(match.word), 180);
+    setTimeout(() => speakLesson(match, "Wonderful! You found"), 180);
   }
 
   function listen() {
@@ -84,7 +118,7 @@ export default function Home() {
           </div>
 
           <div className="word-heading">
-            <button className="mini-action" onClick={() => speak()} aria-label={`Hear ${selected.word}`}><Volume2 size={21} /></button>
+            <button className="mini-action" onClick={() => speakLesson(selected, "Let’s learn")} aria-label={`Hear the ${selected.word} lesson`}><Volume2 size={21} /></button>
             <h2>{selected.word}</h2>
             <button className={`mini-action heart ${saved.includes(selected.word) ? "active" : ""}`} onClick={toggleSave} aria-label="Save this word"><Heart size={21} fill={saved.includes(selected.word) ? "currentColor" : "none"} /></button>
           </div>
@@ -106,7 +140,7 @@ export default function Home() {
           <div className="section-title"><h3>Pick another word</h3><span>Swipe to explore →</span></div>
           <div className="word-list">
             {WORDS.map((item) => (
-              <button key={item.word} onClick={() => { setSelected(item); setMessage(`You chose ${item.word}!`); }} className={selected.word === item.word ? "active" : ""}>
+              <button key={item.word} onClick={() => { setSelected(item); setMessage(`Great choice! ${item.word}`); setTimeout(() => speakLesson(item, "Great choice!"), 120); }} className={selected.word === item.word ? "active" : ""}>
                 <span style={{ background: item.color }}>{item.emoji}</span><b>{item.word}</b>
               </button>
             ))}
