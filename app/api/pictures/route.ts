@@ -2,7 +2,7 @@ import { list, put } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 const SAFE_WORDS = new Set(`
   alligator ant apple astronaut avocado baby badger balloon banana bear bee beetle bicycle bird
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         quality: "high",
         output_format: "webp",
       }),
-      signal: AbortSignal.timeout(55_000),
+      signal: AbortSignal.timeout(170_000),
     });
 
     const imageResult = await imageResponse.json() as {
