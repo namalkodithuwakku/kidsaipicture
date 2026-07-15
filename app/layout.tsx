@@ -16,13 +16,17 @@ export const metadata: Metadata = {
   title: "Say & See Kids",
   description: "A safe little picture and spelling adventure for children.",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "Say & See" },
+  appleWebApp: { capable: true, title: "Say and See" },
   other: {
     "codex-preview": "development",
   },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: [
+      { url: "/icons/favicon-48.png", type: "image/png", sizes: "48x48" },
+      { url: "/icons/icon-192.png", type: "image/png", sizes: "192x192" },
+    ],
+    shortcut: "/icons/favicon-48.png",
+    apple: "/icons/apple-touch-icon.png",
   },
 };
 

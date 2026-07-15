@@ -1,1 +1,35 @@
-{"name":"Say & See Kids","short_name":"Say & See","description":"A safe picture and spelling adventure for children.","start_url":"/","display":"standalone","background_color":"#faf7ff","theme_color":"#745bc7","icons":[{"src":"/favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
+{
+  "name": "Say and See",
+  "short_name": "Say and See",
+  "description": "A safe picture and spelling adventure for children.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf7ff",
+  "theme_color": "#745bc7",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
