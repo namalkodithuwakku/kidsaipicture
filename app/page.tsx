@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Heart, Mic, Sparkles, Star, UserRound, Volume2 } from "lucide-react";
+import { Check, Heart, Mic, Palette, Sparkles, Star, UserRound, Volume2 } from "lucide-react";
 
 type KidWord = { word: string; emoji: string; image: string; color: string; sentence: string; upgrading?: boolean };
 const WORDS: KidWord[] = [
@@ -13,6 +13,13 @@ const WORDS: KidWord[] = [
   { word: "Rainbow", emoji: "🌈", image: "/pictures/rainbow.webp", color: "#cfe9f7", sentence: "A rainbow has many bright colours." },
   { word: "Train", emoji: "🚂", image: "/pictures/train.webp", color: "#cce5f5", sentence: "A train travels along a track." },
   { word: "Flower", emoji: "🌻", image: "/pictures/flower.webp", color: "#ffedb8", sentence: "A flower grows toward the sunshine." },
+];
+
+const WAIT_MESSAGES = [
+  "Mixing the happiest colours…",
+  "Drawing friendly shapes…",
+  "Adding a little sparkle…",
+  "Almost ready for you!",
 ];
 
 export default function Home() {
@@ -29,6 +36,7 @@ export default function Home() {
   });
   const [teacherVoice, setTeacherVoice] = useState<SpeechSynthesisVoice | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [waitStage, setWaitStage] = useState(0);
   const upgradeTokenRef = useRef(0);
 
   useEffect(() => {
@@ -59,6 +67,14 @@ export default function Home() {
       return () => speechSynthesis.removeEventListener("voiceschanged", chooseTeacherVoice);
     }
   }, []);
+
+  useEffect(() => {
+    if (!generating) return;
+    const timer = window.setInterval(() => {
+      setWaitStage((stage) => (stage + 1) % WAIT_MESSAGES.length);
+    }, 7_000);
+    return () => window.clearInterval(timer);
+  }, [generating]);
 
   const letters = useMemo(() => selected.word.toUpperCase().split(""), [selected]);
 
@@ -112,6 +128,7 @@ export default function Home() {
       return;
     }
 
+    setWaitStage(0);
     setGenerating(true);
     setMessage("Making your magical picture…");
     try {
@@ -175,7 +192,24 @@ export default function Home() {
   }
 
   return (
-    <main className="page-wrap">
+    <>
+      {generating && (
+        <div className="magic-wait-backdrop" role="dialog" aria-modal="true" aria-label="Creating your picture">
+          <div className="magic-wait-card">
+            <div className="magic-art" aria-hidden="true">
+              <span className="magic-sparkle sparkle-one"><Sparkles size={22} /></span>
+              <span className="magic-sparkle sparkle-two"><Sparkles size={16} /></span>
+              <div className="magic-palette"><Palette size={48} strokeWidth={2.2} /></div>
+              <div className="magic-colours"><i /><i /><i /><i /></div>
+            </div>
+            <h2>Painting your picture!</h2>
+            <p key={waitStage}>{WAIT_MESSAGES[waitStage]}</p>
+            <div className="magic-progress" aria-hidden="true"><span /></div>
+            <small>Please wait—your picture will pop up soon ✨</small>
+          </div>
+        </div>
+      )}
+      <main className="page-wrap" aria-hidden={generating || undefined}>
       <div className="app-shell">
         <header className="topbar">
           <button className="header-icon favourite-count" aria-label={`${saved.length} favourite words`}><Star size={22} /><span>{saved.length || ""}</span></button>
@@ -188,7 +222,6 @@ export default function Home() {
             {/* Blob URLs are already optimized WebP files and are intentionally rendered directly. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={selected.image} alt={`A friendly storybook ${selected.word.toLowerCase()}`} />
-            {generating && <div className="picture-loader"><Sparkles size={30} /><b>Painting…</b></div>}
             <span className={`saved-picture ${selected.upgrading ? "upgrading" : ""}`}>
               {selected.upgrading ? <Sparkles size={12} /> : <Check size={12} strokeWidth={3} />}
               {selected.upgrading ? "Improving…" : "Saved"}
@@ -208,7 +241,7 @@ export default function Home() {
         </section>
 
         <section className="voice-zone">
-          <div className={`mic-halo ${listening ? "listening" : ""}`}>
+          <div className={`mic-halo ${listening ? "listening" : ""} ${generating ? "creating" : ""}`}>
             <button className="mic-button" onClick={listen} disabled={generating} aria-label="Say a word"><Mic size={37} strokeWidth={2.4} /></button>
           </div>
           <p>{message}</p>
@@ -218,13 +251,14 @@ export default function Home() {
           <div className="section-title"><h3>Pick another word</h3><span>Swipe to explore →</span></div>
           <div className="word-list">
             {WORDS.map((item) => (
-              <button key={item.word} onClick={() => { if (generating) return; upgradeTokenRef.current += 1; setSelected(item); setMessage(`Great choice! ${item.word}`); setTimeout(() => speakLesson(item, "Great choice!"), 120); }} className={selected.word === item.word ? "active" : ""}>
+              <button key={item.word} disabled={generating} onClick={() => { if (generating) return; upgradeTokenRef.current += 1; setSelected(item); setMessage(`Great choice! ${item.word}`); setTimeout(() => speakLesson(item, "Great choice!"), 120); }} className={selected.word === item.word ? "active" : ""}>
                 <span style={{ background: item.color }}>{item.emoji}</span><b>{item.word}</b>
               </button>
             ))}
           </div>
         </section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
