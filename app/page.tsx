@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Heart, Mic, Sparkles, Star, UserRound, Volume2 } from "lucide-react";
 
-type KidWord = { word: string; emoji: string; image: string; color: string; sentence: string };
+type KidWord = { word: string; emoji: string; image: string; color: string; sentence: string; upgrading?: boolean };
 const WORDS: KidWord[] = [
   { word: "Rabbit", emoji: "🐇", image: "/pictures/rabbit.webp", color: "#f8d9e4", sentence: "A rabbit hops in the meadow." },
   { word: "Lion", emoji: "🦁", image: "/pictures/lion.webp", color: "#ffe5a7", sentence: "A lion has a big, fluffy mane." },
@@ -29,6 +29,7 @@ export default function Home() {
   });
   const [teacherVoice, setTeacherVoice] = useState<SpeechSynthesisVoice | null>(null);
   const [generating, setGenerating] = useState(false);
+  const upgradeTokenRef = useRef(0);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
@@ -78,7 +79,30 @@ export default function Home() {
     speak(`${praise} ${item.word}. ${spelling}. ${item.sentence}`, 0.72);
   }
 
+  function watchForHighQuality(item: KidWord, token: number, attempt = 0) {
+    if (attempt >= 20 || upgradeTokenRef.current !== token) return;
+    window.setTimeout(async () => {
+      if (upgradeTokenRef.current !== token) return;
+      try {
+        const response = await fetch(`/api/pictures?word=${encodeURIComponent(item.word)}`, { cache: "no-store" });
+        const result = await response.json() as {
+          image?: string;
+          quality?: "preview" | "high";
+        };
+        if (response.ok && result.image && result.quality === "high") {
+          setSelected({ ...item, image: result.image, upgrading: false });
+          setMessage(`Your beautiful ${item.word} picture is ready!`);
+          return;
+        }
+      } catch {
+        // Keep the fast preview visible and quietly check again.
+      }
+      watchForHighQuality(item, token, attempt + 1);
+    }, 12_000);
+  }
+
   async function chooseWord(raw: string) {
+    const requestToken = ++upgradeTokenRef.current;
     const cleaned = raw.toLowerCase().replace(/[^a-z ]/g, "").trim();
     const match = WORDS.find((item) => cleaned.includes(item.word.toLowerCase()));
     if (match) {
@@ -101,6 +125,8 @@ export default function Home() {
         image?: string;
         sentence?: string;
         cached?: boolean;
+        quality?: "preview" | "high";
+        upgrading?: boolean;
         error?: string;
       };
       if (!response.ok || !result.word || !result.image || !result.sentence) {
@@ -112,10 +138,14 @@ export default function Home() {
         sentence: result.sentence,
         emoji: "✨",
         color: "#dcd8fb",
+        upgrading: result.upgrading,
       };
       setSelected(item);
-      setMessage(result.cached ? `I found your saved ${item.word} picture!` : `Wonderful! Your ${item.word} picture is saved.`);
+      setMessage(result.upgrading
+        ? `Here’s your ${item.word}! Making it extra beautiful…`
+        : result.cached ? `I found your saved ${item.word} picture!` : `Wonderful! Your ${item.word} picture is saved.`);
       setTimeout(() => speakLesson(item, result.cached ? "Look what I found!" : "Wonderful! You made"), 180);
+      if (result.upgrading) watchForHighQuality(item, requestToken);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Please try another friendly word!");
     } finally {
@@ -159,7 +189,10 @@ export default function Home() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={selected.image} alt={`A friendly storybook ${selected.word.toLowerCase()}`} />
             {generating && <div className="picture-loader"><Sparkles size={30} /><b>Painting…</b></div>}
-            <span className="saved-picture"><Check size={12} strokeWidth={3} /> Saved</span>
+            <span className={`saved-picture ${selected.upgrading ? "upgrading" : ""}`}>
+              {selected.upgrading ? <Sparkles size={12} /> : <Check size={12} strokeWidth={3} />}
+              {selected.upgrading ? "Improving…" : "Saved"}
+            </span>
           </div>
 
           <div className="word-heading">
@@ -185,7 +218,7 @@ export default function Home() {
           <div className="section-title"><h3>Pick another word</h3><span>Swipe to explore →</span></div>
           <div className="word-list">
             {WORDS.map((item) => (
-              <button key={item.word} onClick={() => { if (generating) return; setSelected(item); setMessage(`Great choice! ${item.word}`); setTimeout(() => speakLesson(item, "Great choice!"), 120); }} className={selected.word === item.word ? "active" : ""}>
+              <button key={item.word} onClick={() => { if (generating) return; upgradeTokenRef.current += 1; setSelected(item); setMessage(`Great choice! ${item.word}`); setTimeout(() => speakLesson(item, "Great choice!"), 120); }} className={selected.word === item.word ? "active" : ""}>
                 <span style={{ background: item.color }}>{item.emoji}</span><b>{item.word}</b>
               </button>
             ))}
