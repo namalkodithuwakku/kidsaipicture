@@ -4,7 +4,10 @@ A mobile-first, installable kids vocabulary PWA. Children can speak or select a 
 
 ## Current version
 
-- Eight approved child-safe words and saved illustrations
+- Eight bundled storybook illustrations that load instantly
+- AI generation for a curated child-safe vocabulary
+- Permanent Vercel Blob picture storage (each word is generated only once)
+- High-quality square WebP output from OpenAI
 - Browser speech recognition and pronunciation
 - Letter-by-letter spelling
 - Device-local favourites
@@ -21,6 +24,11 @@ npm run dev
 
 ## Vercel
 
-Import the GitHub repository into Vercel. No environment variables are required for the current saved-picture version.
+Import the GitHub repository into Vercel, then configure:
 
-`OPENAI_API_KEY` and `BLOB_READ_WRITE_TOKEN` are reserved for Step 2, when live generation and permanent storage for new approved words are connected. Do not expose either variable with a `NEXT_PUBLIC_` prefix.
+- `OPENAI_API_KEY`: your server-side OpenAI API key.
+- Vercel Blob: create a public Blob store and connect it to this project. Vercel will provide either OIDC storage variables or `BLOB_READ_WRITE_TOKEN`.
+
+Apply the variables to Production, Preview, and Development, then redeploy. Never add `NEXT_PUBLIC_` to either secret.
+
+The server accepts only the curated preschool vocabulary in `app/api/pictures/route.ts`. Cached Blob pictures are returned before any new AI request, and new generation is rate-limited to help control costs.

@@ -19,12 +19,18 @@ export default function Home() {
   const [selected, setSelected] = useState<KidWord>(WORDS[0]);
   const [listening, setListening] = useState(false);
   const [message, setMessage] = useState("Tap and say a word");
-  const [saved, setSaved] = useState<string[]>([]);
+  const [saved, setSaved] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(localStorage.getItem("say-see-favourites") || "[]");
+    } catch {
+      return [];
+    }
+  });
   const [teacherVoice, setTeacherVoice] = useState<SpeechSynthesisVoice | null>(null);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
-    const old = localStorage.getItem("say-see-favourites");
-    if (old) setSaved(JSON.parse(old));
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
 
     if ("speechSynthesis" in window) {
@@ -72,13 +78,49 @@ export default function Home() {
     speak(`${praise} ${item.word}. ${spelling}. ${item.sentence}`, 0.72);
   }
 
-  function chooseWord(raw: string) {
+  async function chooseWord(raw: string) {
     const cleaned = raw.toLowerCase().replace(/[^a-z ]/g, "").trim();
     const match = WORDS.find((item) => cleaned.includes(item.word.toLowerCase()));
-    if (!match) { setMessage("Try one of the friendly words below!"); return; }
-    setSelected(match);
-    setMessage(`Wonderful! You said ${match.word}.`);
-    setTimeout(() => speakLesson(match, "Wonderful! You found"), 180);
+    if (match) {
+      setSelected(match);
+      setMessage(`Wonderful! You said ${match.word}.`);
+      setTimeout(() => speakLesson(match, "Wonderful! You found"), 180);
+      return;
+    }
+
+    setGenerating(true);
+    setMessage("Making your magical picture…");
+    try {
+      const response = await fetch("/api/pictures", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word: cleaned }),
+      });
+      const result = await response.json() as {
+        word?: string;
+        image?: string;
+        sentence?: string;
+        cached?: boolean;
+        error?: string;
+      };
+      if (!response.ok || !result.word || !result.image || !result.sentence) {
+        throw new Error(result.error || "Please try another friendly word!");
+      }
+      const item: KidWord = {
+        word: result.word,
+        image: result.image,
+        sentence: result.sentence,
+        emoji: "✨",
+        color: "#dcd8fb",
+      };
+      setSelected(item);
+      setMessage(result.cached ? `I found your saved ${item.word} picture!` : `Wonderful! Your ${item.word} picture is saved.`);
+      setTimeout(() => speakLesson(item, result.cached ? "Look what I found!" : "Wonderful! You made"), 180);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Please try another friendly word!");
+    } finally {
+      setGenerating(false);
+    }
   }
 
   function listen() {
@@ -113,7 +155,10 @@ export default function Home() {
 
         <section className="discovery-card" aria-live="polite">
           <div className="picture-frame" key={selected.word}>
+            {/* Blob URLs are already optimized WebP files and are intentionally rendered directly. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={selected.image} alt={`A friendly storybook ${selected.word.toLowerCase()}`} />
+            {generating && <div className="picture-loader"><Sparkles size={30} /><b>Painting…</b></div>}
             <span className="saved-picture"><Check size={12} strokeWidth={3} /> Saved</span>
           </div>
 
@@ -131,7 +176,7 @@ export default function Home() {
 
         <section className="voice-zone">
           <div className={`mic-halo ${listening ? "listening" : ""}`}>
-            <button className="mic-button" onClick={listen} aria-label="Say a word"><Mic size={37} strokeWidth={2.4} /></button>
+            <button className="mic-button" onClick={listen} disabled={generating} aria-label="Say a word"><Mic size={37} strokeWidth={2.4} /></button>
           </div>
           <p>{message}</p>
         </section>
@@ -140,7 +185,7 @@ export default function Home() {
           <div className="section-title"><h3>Pick another word</h3><span>Swipe to explore →</span></div>
           <div className="word-list">
             {WORDS.map((item) => (
-              <button key={item.word} onClick={() => { setSelected(item); setMessage(`Great choice! ${item.word}`); setTimeout(() => speakLesson(item, "Great choice!"), 120); }} className={selected.word === item.word ? "active" : ""}>
+              <button key={item.word} onClick={() => { if (generating) return; setSelected(item); setMessage(`Great choice! ${item.word}`); setTimeout(() => speakLesson(item, "Great choice!"), 120); }} className={selected.word === item.word ? "active" : ""}>
                 <span style={{ background: item.color }}>{item.emoji}</span><b>{item.word}</b>
               </button>
             ))}
