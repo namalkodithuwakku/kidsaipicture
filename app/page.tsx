@@ -24,6 +24,7 @@ const WAIT_MESSAGES = [
 
 export default function Home() {
   const [selected, setSelected] = useState<KidWord>(WORDS[0]);
+  const [galleryWords, setGalleryWords] = useState<KidWord[]>(WORDS);
   const [listening, setListening] = useState(false);
   const [message, setMessage] = useState("Tap and say a word");
   const [saved, setSaved] = useState<string[]>(() => {
@@ -41,6 +42,23 @@ export default function Home() {
 
   useEffect(() => {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
+
+    fetch("/api/gallery")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((result: { pictures?: Array<{ word: string; image: string; sentence: string }> }) => {
+        if (!result.pictures?.length) return;
+        const colors = ["#f8d9e4", "#ffe5a7", "#dcd8fb", "#cfe9f7", "#ffedb8"];
+        const pictures = result.pictures.map((item, index) => ({
+          word: item.word,
+          image: item.image,
+          sentence: item.sentence,
+          emoji: "",
+          color: colors[index % colors.length],
+        }));
+        setGalleryWords(pictures);
+        setSelected((current) => pictures.find((item) => item.word.toLowerCase() === current.word.toLowerCase()) ?? pictures[0]);
+      })
+      .catch(() => undefined);
 
     if ("speechSynthesis" in window) {
       const chooseTeacherVoice = () => {
@@ -120,7 +138,7 @@ export default function Home() {
   async function chooseWord(raw: string) {
     const requestToken = ++upgradeTokenRef.current;
     const cleaned = raw.toLowerCase().replace(/[^a-z ]/g, "").trim();
-    const match = WORDS.find((item) => cleaned.includes(item.word.toLowerCase()));
+    const match = galleryWords.find((item) => cleaned.includes(item.word.toLowerCase()));
     if (match) {
       setSelected(match);
       setMessage(`Wonderful! You said ${match.word}.`);
@@ -250,9 +268,12 @@ export default function Home() {
         <section className="word-picker">
           <div className="section-title"><h3>Pick another word</h3><span>Swipe to explore →</span></div>
           <div className="word-list">
-            {WORDS.map((item) => (
+            {galleryWords.map((item) => (
               <button key={item.word} disabled={generating} onClick={() => { if (generating) return; upgradeTokenRef.current += 1; setSelected(item); setMessage(`Great choice! ${item.word}`); setTimeout(() => speakLesson(item, "Great choice!"), 120); }} className={selected.word === item.word ? "active" : ""}>
-                <span style={{ background: item.color }}>{item.emoji}</span><b>{item.word}</b>
+                <span style={{ background: item.color }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={item.image} alt="" loading="lazy" />
+                </span><b>{item.word}</b>
               </button>
             ))}
           </div>
