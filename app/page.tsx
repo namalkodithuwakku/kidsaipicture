@@ -24,6 +24,19 @@ const WAIT_MESSAGES = [
   "Almost ready for you!",
 ];
 
+const CHOICE_PRAISE = [
+  "Great choice!",
+  "Lovely word!",
+  "Well done!",
+  "Nice one!",
+  "What a fun word!",
+  "Excellent pick!",
+];
+
+function randomChoicePraise() {
+  return CHOICE_PRAISE[Math.floor(Math.random() * CHOICE_PRAISE.length)];
+}
+
 function normalizeWords(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -438,7 +451,7 @@ export default function Home() {
           <div className="section-title"><h3>Pick another word</h3><span>Swipe to explore →</span></div>
           <div className="word-list" ref={galleryRef}>
             {galleryWords.map((item) => (
-              <button data-word={item.word.toLowerCase()} key={item.word} disabled={generating} onClick={() => { if (generating) return; upgradeTokenRef.current += 1; setSelected(item); setMessage(`Great choice! ${item.word}`); setTimeout(() => speakLesson(item, "Great choice!"), 120); }} className={selected.word === item.word ? "active" : ""}>
+              <button data-word={item.word.toLowerCase()} key={item.word} disabled={generating} onClick={() => { if (generating) return; const praise = randomChoicePraise(); upgradeTokenRef.current += 1; setSelected(item); setMessage(`${praise} ${item.word}`); setTimeout(() => speakLesson(item, praise), 120); }} className={selected.word === item.word ? "active" : ""}>
                 <span style={{ background: item.color }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={item.image} alt="" loading="lazy" />
