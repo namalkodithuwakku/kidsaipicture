@@ -38,3 +38,8 @@ body{overflow:hidden}.page-wrap{height:100dvh;min-height:0}.app-shell{display:fl
 /* Final handset polish */
 .picture-frame{height:min(39dvh,calc(100vw - 34px))}.word-voice-select{width:39px;height:36px;padding-left:6px;padding-right:12px;border-radius:13px;font-size:9px;box-shadow:0 3px 0 #c9bae8,0 6px 11px #75659a20}.dock-item{color:#958aa9}.dock-item:disabled{opacity:.7}.dock-center .teacher-speaking{position:absolute;display:grid;place-items:center;gap:0}.dock-center .teacher-speaking>svg{position:relative;top:-3px}.dock-center .teacher-speaking>span{position:absolute;left:50%;bottom:8px;transform:translateX(-50%)}
 @media(max-height:700px){.picture-frame{height:min(35dvh,calc(100vw - 42px))}.dock-center .teacher-speaking>span{bottom:6px}}
+
+/* Keep spoken feedback clearly between the gallery and microphone */
+.dock-message{bottom:calc(91px + env(safe-area-inset-bottom));max-width:88%;padding:6px 15px!important;font-size:11px!important;line-height:1.25;white-space:nowrap;box-shadow:0 5px 14px #63597a26}
+@media(max-width:380px){.dock-message{max-width:92%;padding:5px 11px!important;font-size:10px!important}}
+@media(max-height:700px){.dock-message{bottom:calc(80px + env(safe-area-inset-bottom));padding-top:5px!important;padding-bottom:5px!important}}
