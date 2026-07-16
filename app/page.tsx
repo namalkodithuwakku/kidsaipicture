@@ -109,8 +109,8 @@ export default function Home() {
       const chooseTeacherVoice = () => {
         const voices = speechSynthesis.getVoices().filter((voice) => voice.lang.toLowerCase().startsWith("en"));
         const preferredNames = [
-          "samantha", "ava", "aria", "jenny", "zira", "susan", "serena",
-          "google uk english female", "google us english", "female"
+          "ana", "ava", "aria", "jenny", "zira", "salli", "tessa", "karen",
+          "google uk english female", "google us english female", "samantha", "female"
         ];
         const scored = voices
           .map((voice) => ({
@@ -119,7 +119,8 @@ export default function Home() {
               (preferredNames.findIndex((name) => voice.name.toLowerCase().includes(name)) >= 0
                 ? 100 - preferredNames.findIndex((name) => voice.name.toLowerCase().includes(name))
                 : 0) +
-              (voice.lang.toLowerCase() === "en-us" ? 8 : 0) +
+              (voice.name.toLowerCase().includes("natural") ? 12 : 0) +
+              (voice.lang.toLowerCase() === "en-gb" ? 10 : voice.lang.toLowerCase() === "en-us" ? 7 : 0) +
               (voice.localService ? 2 : 0),
           }))
           .sort((a, b) => b.score - a.score);
@@ -145,7 +146,7 @@ export default function Home() {
 
   const letters = useMemo(() => selected.word.toUpperCase().split(""), [selected]);
 
-  function speak(text = selected.word, rate = 0.76) {
+  function speak(text = selected.word, rate = 0.82) {
     if (!("speechSynthesis" in window)) return;
     const speechToken = ++speechTokenRef.current;
     speechSynthesis.cancel();
@@ -153,7 +154,7 @@ export default function Home() {
     if (teacherVoice) utterance.voice = teacherVoice;
     utterance.lang = teacherVoice?.lang || "en-US";
     utterance.rate = rate;
-    utterance.pitch = 1.04;
+    utterance.pitch = 1.15;
     utterance.volume = 1;
     utterance.onstart = () => {
       if (speechTokenRef.current === speechToken) setSpeaking(true);
@@ -168,7 +169,7 @@ export default function Home() {
 
   function speakLesson(item: KidWord, praise = "Wonderful!") {
     const spelling = item.word.toUpperCase().split("").join(". ");
-    speak(`${praise} ${item.word}. ${spelling}. ${item.sentence}`, 0.72);
+    speak(`${praise} ${item.word}. ${spelling}. ${item.sentence}`, 0.78);
   }
 
   function watchForHighQuality(item: KidWord, token: number, attempt = 0) {
