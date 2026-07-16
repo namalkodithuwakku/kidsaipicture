@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Heart, Mic, Sparkles, Volume2 } from "lucide-react";
+import { BookOpen, Check, Images, MessageCircle, Mic, Sparkles, Volume2 } from "lucide-react";
 
 type KidWord = { word: string; emoji: string; image: string; color: string; sentence: string; upgrading?: boolean };
 type WordSuggestion = KidWord & { score: number };
@@ -56,14 +56,6 @@ export default function Home() {
   const [galleryWords, setGalleryWords] = useState<KidWord[]>(WORDS);
   const [listening, setListening] = useState(false);
   const [message, setMessage] = useState("Tap and say a word");
-  const [saved, setSaved] = useState<string[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(localStorage.getItem("say-see-favourites") || "[]");
-    } catch {
-      return [];
-    }
-  });
   const [teacherVoice, setTeacherVoice] = useState<SpeechSynthesisVoice | null>(null);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [speaking, setSpeaking] = useState(false);
@@ -389,12 +381,6 @@ export default function Home() {
     recognition.start();
   }
 
-  function toggleSave() {
-    const next = saved.includes(selected.word) ? saved.filter((word) => word !== selected.word) : [...saved, selected.word];
-    setSaved(next);
-    localStorage.setItem("say-see-favourites", JSON.stringify(next));
-  }
-
   return (
     <>
       {generating && (
@@ -419,11 +405,6 @@ export default function Home() {
       <div className="app-shell">
         <header className="topbar">
           <div className="brand"><h1><span>Say</span> <b>&amp;</b> <em>See</em></h1><p>Little words. Big imagination.</p></div>
-          {!!availableVoices.length && (
-            <select className="voice-select" value={teacherVoice?.name ?? ""} onChange={(event) => changeTeacherVoice(event.target.value)} aria-label="Choose teacher voice">
-              {availableVoices.slice(0, 5).map((voice, index) => <option key={voice.name} value={voice.name}>Voice {index + 1}</option>)}
-            </select>
-          )}
         </header>
 
         <section className="discovery-card" aria-live="polite">
@@ -440,7 +421,11 @@ export default function Home() {
           <div className="word-heading">
             <button className="mini-action" onClick={() => speakLesson(selected, "Let’s learn")} aria-label={`Hear the ${selected.word} lesson`}><Volume2 size={21} /></button>
             <h2 className={selected.word.length >= 10 ? "extra-long" : selected.word.length >= 8 ? "long" : ""}>{selected.word}</h2>
-            <button className={`mini-action heart ${saved.includes(selected.word) ? "active" : ""}`} onClick={toggleSave} aria-label="Save this word"><Heart size={21} fill={saved.includes(selected.word) ? "currentColor" : "none"} /></button>
+            {!!availableVoices.length ? (
+              <select className="voice-select word-voice-select" value={teacherVoice?.name ?? ""} onChange={(event) => changeTeacherVoice(event.target.value)} aria-label="Choose teacher voice">
+                {availableVoices.slice(0, 5).map((voice, index) => <option key={voice.name} value={voice.name}>V{index + 1}</option>)}
+              </select>
+            ) : <span />}
           </div>
 
           <div className="letter-row" aria-label={`${selected.word} is spelled ${letters.join(" ")}`}>
@@ -463,13 +448,25 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="voice-zone">
+        <section className="voice-zone" aria-label="Learning navigation">
+          <button className="dock-item active" type="button" aria-label="Picture words"><Images size={20} /></button>
+          <button className="dock-item" type="button" aria-label="Stories coming soon" disabled><BookOpen size={20} /></button>
+          <div className="dock-center">
           {!listening && !generating && !speaking && !suggestions.length && (
             <div className="mic-halo">
               <button className="mic-button" onClick={listen} aria-label="Say a word"><Mic size={37} strokeWidth={2.4} /></button>
             </div>
           )}
           {listening && <div className="listening-bubbles" aria-label="Listening"><i /><i /><i /></div>}
+          {speaking && (
+            <div className="teacher-speaking" aria-label="Teacher is speaking">
+              <Volume2 size={25} />
+              <span><i /><i /><i /></span>
+            </div>
+          )}
+          </div>
+          <button className="dock-item" type="button" aria-label="Conversations coming soon" disabled><MessageCircle size={20} /></button>
+          <button className="dock-item" type="button" aria-label="More lessons coming soon" disabled><Sparkles size={20} /></button>
           {!!suggestions.length && (
             <div className="speech-suggestions" role="group" aria-label="Did you mean">
               {suggestions.map((item) => (
@@ -485,7 +482,7 @@ export default function Home() {
               <button className="try-again" onClick={() => { setSuggestions([]); setMessage("Tap and say the word again"); }}>None of these</button>
             </div>
           )}
-          <p>{message}</p>
+          <p className="dock-message">{message}</p>
         </section>
 
       </div>
