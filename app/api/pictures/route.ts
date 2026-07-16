@@ -1,35 +1,24 @@
 import { del, list, put, type ListBlobResultBlob } from "@vercel/blob";
 import { after, NextRequest, NextResponse } from "next/server";
+import { categoryForWord, labelForWord, normaliseKidsWord } from "@/lib/kids-catalog";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const SAFE_WORDS = new Set(`
-  alligator ant apple astronaut avocado baby badger balloon banana bear bee beetle bicycle bird
-  boat book bunny butterfly cake camel car carrot cat caterpillar cherry chicken cloud cow crab
-  crocodile cupcake deer dinosaur dog dolphin donkey duck eagle elephant fairy fish flamingo flower
-  fox frog giraffe goat grape grasshopper hamster hedgehog hippo horse icecream iguana island jellyfish
-  kangaroo kitten koala ladybug lamb lemon lion llama mango monkey moon mouse octopus orange owl panda
-  parrot peach peacock pear penguin pig pineapple planet pony puppy rabbit rainbow robot rocket seal
-  sheep snail snowman squirrel star strawberry sun tiger tortoise train tree turtle unicorn watermelon
-  whale zebra
-`.trim().split(/\s+/));
-
 const attempts = new Map<string, number[]>();
 
 function titleCase(word: string) {
-  return word.charAt(0).toUpperCase() + word.slice(1);
+  return labelForWord(word);
 }
 
 function sentenceFor(word: string) {
-  return `Here is a friendly ${word}.`;
+  const label = labelForWord(word);
+  if (["ineedhelp", "iwantabreak", "ithurtshere", "thankyou"].includes(word)) return `You can say, “${label}.”`;
+  return `Let’s discover a wonderful ${label.toLowerCase()}.`;
 }
 
 function parseSafeWord(raw: unknown) {
-  const spokenWords = typeof raw === "string"
-    ? raw.toLowerCase().match(/[a-z]+/g)?.slice(0, 8) ?? []
-    : [];
-  return spokenWords.find((item) => SAFE_WORDS.has(item)) ?? "";
+  return normaliseKidsWord(raw);
 }
 
 function isRateLimited(ip: string) {
@@ -67,6 +56,7 @@ function pictureResponse(word: string, blob: { url: string }, quality: "preview"
     word: titleCase(word),
     image: blob.url,
     sentence: sentenceFor(word),
+    category: categoryForWord(word),
     quality,
     upgrading: quality === "preview",
     cached,
@@ -74,12 +64,19 @@ function pictureResponse(word: string, blob: { url: string }, quality: "preview"
 }
 
 function promptFor(word: string) {
+  const label = labelForWord(word);
+  const isCommunicationCard = ["ineedhelp", "iwantabreak", "ithurtshere", "thankyou", "yes", "no", "please"].includes(word);
   return [
-    `A beautiful premium children's storybook illustration of one friendly ${word}.`,
+    isCommunicationCard
+      ? `A beautiful premium children's storybook scene that clearly communicates “${label}” through a safe child-friendly situation, without any written text.`
+      : `A beautiful premium children's storybook illustration of one friendly ${label.toLowerCase()}.`,
     "For preschool children ages 3 to 6. Warm, joyful, gentle and cute.",
-    "Soft hand-painted gouache and watercolor texture, rounded shapes, expressive friendly face,",
-    "bright harmonious colors, simple uncluttered background, centered subject, excellent detail.",
-    "No text, no letters, no logo, no watermark, no frightening elements, no weapons, no injury.",
+    "Show the subject clearly and accurately so a young child can recognise and learn it.",
+    "Soft hand-painted gouache and watercolor texture, rounded shapes, bright harmonious colors,",
+    "simple uncluttered setting, centered subject, excellent detail and a playful learning mood.",
+    "People must be fully clothed, kind and shown doing safe everyday activities.",
+    "No text, letters, logo, watermark, brands, frightening elements, danger, weapons, injury,",
+    "adult themes, stereotypes, political symbols, real public figures or copyrighted characters.",
   ].join(" ");
 }
 
@@ -196,7 +193,7 @@ export async function POST(request: NextRequest) {
     const word = parseSafeWord(body.word);
     if (!word) {
       return NextResponse.json(
-        { error: "Let’s try a friendly animal, food, nature, or toy word!" },
+        { error: "Let’s try a friendly word about our world!" },
         { status: 400 },
       );
     }
