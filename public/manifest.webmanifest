@@ -4,8 +4,8 @@
   "description": "A safe picture and spelling adventure for children.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#faf7ff",
-  "theme_color": "#745bc7",
+  "background_color": "#e9ddff",
+  "theme_color": "#765ac8",
   "icons": [
     {
       "src": "/icons/icon-192.png",

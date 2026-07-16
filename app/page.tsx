@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Heart, Mic, Palette, Sparkles, Star, UserRound, Volume2 } from "lucide-react";
+import { Check, Heart, Mic, Sparkles, Volume2 } from "lucide-react";
 
 type KidWord = { word: string; emoji: string; image: string; color: string; sentence: string; upgrading?: boolean };
 type WordSuggestion = KidWord & { score: number };
@@ -65,13 +65,16 @@ export default function Home() {
     }
   });
   const [teacherVoice, setTeacherVoice] = useState<SpeechSynthesisVoice | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [speaking, setSpeaking] = useState(false);
+  const [activeLetter, setActiveLetter] = useState<number | null>(null);
   const [generating, setGenerating] = useState(false);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [suggestions, setSuggestions] = useState<WordSuggestion[]>([]);
   const [waitStage, setWaitStage] = useState(0);
   const upgradeTokenRef = useRef(0);
   const speechTokenRef = useRef(0);
+  const galleryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
@@ -124,7 +127,10 @@ export default function Home() {
               (voice.localService ? 2 : 0),
           }))
           .sort((a, b) => b.score - a.score);
-        setTeacherVoice(scored[0]?.voice ?? voices[0] ?? null);
+        const sortedVoices = scored.map((item) => item.voice);
+        const savedVoiceName = localStorage.getItem("say-see-teacher-voice");
+        setAvailableVoices(sortedVoices);
+        setTeacherVoice(sortedVoices.find((voice) => voice.name === savedVoiceName) ?? sortedVoices[0] ?? null);
       };
       chooseTeacherVoice();
       speechSynthesis.addEventListener("voiceschanged", chooseTeacherVoice);
@@ -144,12 +150,23 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [generating]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const target = [...(galleryRef.current?.querySelectorAll<HTMLButtonElement>("button[data-word]") ?? [])]
+        .find((button) => button.dataset.word === selected.word.toLowerCase());
+      target?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }, 90);
+    return () => window.clearTimeout(timer);
+  }, [selected.word]);
+
   const letters = useMemo(() => selected.word.toUpperCase().split(""), [selected]);
 
   function speak(text = selected.word, rate = 0.82) {
     if (!("speechSynthesis" in window)) return;
     const speechToken = ++speechTokenRef.current;
     speechSynthesis.cancel();
+    setActiveLetter(null);
+    setSpeaking(true);
     const utterance = new SpeechSynthesisUtterance(text);
     if (teacherVoice) utterance.voice = teacherVoice;
     utterance.lang = teacherVoice?.lang || "en-US";
@@ -168,8 +185,63 @@ export default function Home() {
   }
 
   function speakLesson(item: KidWord, praise = "Wonderful!") {
-    const spelling = item.word.toUpperCase().split("").join(". ");
-    speak(`${praise} ${item.word}. ${spelling}. ${item.sentence}`, 0.78);
+    if (!("speechSynthesis" in window)) return;
+    const speechToken = ++speechTokenRef.current;
+    speechSynthesis.cancel();
+    setSpeaking(true);
+    setActiveLetter(null);
+
+    const makeUtterance = (text: string, rate: number) => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      if (teacherVoice) utterance.voice = teacherVoice;
+      utterance.lang = teacherVoice?.lang || "en-US";
+      utterance.rate = rate;
+      utterance.pitch = 1.15;
+      utterance.volume = 1;
+      return utterance;
+    };
+    const finishLesson = () => {
+      if (speechTokenRef.current !== speechToken) return;
+      setActiveLetter(null);
+      setSpeaking(false);
+    };
+    const lesson = [makeUtterance(`${praise} ${item.word}.`, 0.78)];
+    item.word.toUpperCase().split("").forEach((letter, index) => {
+      const utterance = makeUtterance(letter === " " ? "space" : letter, 0.68);
+      utterance.onstart = () => {
+        if (speechTokenRef.current === speechToken) setActiveLetter(index);
+      };
+      utterance.onerror = finishLesson;
+      lesson.push(utterance);
+    });
+    const sentence = makeUtterance(item.sentence, 0.78);
+    sentence.onstart = () => {
+      if (speechTokenRef.current === speechToken) setActiveLetter(null);
+    };
+    sentence.onend = finishLesson;
+    sentence.onerror = finishLesson;
+    lesson.push(sentence);
+    lesson.forEach((utterance) => speechSynthesis.speak(utterance));
+  }
+
+  function changeTeacherVoice(name: string) {
+    const voice = availableVoices.find((item) => item.name === name);
+    if (!voice) return;
+    setTeacherVoice(voice);
+    localStorage.setItem("say-see-teacher-voice", voice.name);
+    const speechToken = ++speechTokenRef.current;
+    speechSynthesis.cancel();
+    const preview = new SpeechSynthesisUtterance("Hello! Let’s learn together.");
+    preview.voice = voice;
+    preview.lang = voice.lang;
+    preview.rate = 0.82;
+    preview.pitch = 1.15;
+    preview.onstart = () => setSpeaking(true);
+    preview.onend = () => {
+      if (speechTokenRef.current === speechToken) setSpeaking(false);
+    };
+    preview.onerror = preview.onend;
+    speechSynthesis.speak(preview);
   }
 
   function watchForHighQuality(item: KidWord, token: number, attempt = 0) {
@@ -331,8 +403,10 @@ export default function Home() {
             <div className="magic-art" aria-hidden="true">
               <span className="magic-sparkle sparkle-one"><Sparkles size={22} /></span>
               <span className="magic-sparkle sparkle-two"><Sparkles size={16} /></span>
-              <div className="magic-palette"><Palette size={48} strokeWidth={2.2} /></div>
-              <div className="magic-colours"><i /><i /><i /><i /></div>
+              <div className="magic-logo">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/icons/app-logo-3d.png" alt="" />
+              </div>
             </div>
             <h2>Painting your picture!</h2>
             <p key={waitStage}>{WAIT_MESSAGES[waitStage]}</p>
@@ -344,9 +418,12 @@ export default function Home() {
       <main className="page-wrap" aria-hidden={generating || undefined}>
       <div className="app-shell">
         <header className="topbar">
-          <button className="header-icon favourite-count" aria-label={`${saved.length} favourite words`}><Star size={22} /><span>{saved.length || ""}</span></button>
           <div className="brand"><h1><span>Say</span> <b>&amp;</b> <em>See</em></h1><p>Little words. Big imagination.</p></div>
-          <button className="header-icon" aria-label="Grown-ups area"><UserRound size={22} /></button>
+          {!!availableVoices.length && (
+            <select className="voice-select" value={teacherVoice?.name ?? ""} onChange={(event) => changeTeacherVoice(event.target.value)} aria-label="Choose teacher voice">
+              {availableVoices.slice(0, 5).map((voice, index) => <option key={voice.name} value={voice.name}>Voice {index + 1}</option>)}
+            </select>
+          )}
         </header>
 
         <section className="discovery-card" aria-live="polite">
@@ -367,9 +444,23 @@ export default function Home() {
           </div>
 
           <div className="letter-row" aria-label={`${selected.word} is spelled ${letters.join(" ")}`}>
-            {letters.map((letter, index) => <button key={`${letter}-${index}`} onClick={() => speak(letter)} style={{ "--delay": `${index * 55}ms` } as React.CSSProperties}>{letter}</button>)}
+            {letters.map((letter, index) => <button className={activeLetter === index ? "speaking" : ""} key={`${letter}-${index}`} onClick={() => speak(letter)} style={{ "--delay": `${index * 55}ms` } as React.CSSProperties}>{letter}</button>)}
           </div>
           <p className="sentence"><Sparkles size={15} /> {selected.sentence}</p>
+        </section>
+
+        <section className="word-picker">
+          <div className="section-title"><h3>Pick another word</h3><span>Swipe to explore →</span></div>
+          <div className="word-list" ref={galleryRef}>
+            {galleryWords.map((item) => (
+              <button data-word={item.word.toLowerCase()} key={item.word} disabled={generating} onClick={() => { if (generating) return; upgradeTokenRef.current += 1; setSelected(item); setMessage(`Great choice! ${item.word}`); setTimeout(() => speakLesson(item, "Great choice!"), 120); }} className={selected.word === item.word ? "active" : ""}>
+                <span style={{ background: item.color }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={item.image} alt="" loading="lazy" />
+                </span><b>{item.word}</b>
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="voice-zone">
@@ -397,19 +488,6 @@ export default function Home() {
           <p>{message}</p>
         </section>
 
-        <section className="word-picker">
-          <div className="section-title"><h3>Pick another word</h3><span>Swipe to explore →</span></div>
-          <div className="word-list">
-            {galleryWords.map((item) => (
-              <button key={item.word} disabled={generating} onClick={() => { if (generating) return; upgradeTokenRef.current += 1; setSelected(item); setMessage(`Great choice! ${item.word}`); setTimeout(() => speakLesson(item, "Great choice!"), 120); }} className={selected.word === item.word ? "active" : ""}>
-                <span style={{ background: item.color }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={item.image} alt="" loading="lazy" />
-                </span><b>{item.word}</b>
-              </button>
-            ))}
-          </div>
-        </section>
       </div>
       </main>
     </>
