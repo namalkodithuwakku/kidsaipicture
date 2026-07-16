@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Heart, Mic, Palette, Sparkles, Star, UserRound, Volume2 } from "lucide-react";
 
 type KidWord = { word: string; emoji: string; image: string; color: string; sentence: string; upgrading?: boolean };
+type WordSuggestion = KidWord & { score: number };
+type CatalogItem = { word: string; searchTerms?: string[] };
 const WORDS: KidWord[] = [
   { word: "Rabbit", emoji: "🐇", image: "/pictures/rabbit.webp", color: "#f8d9e4", sentence: "A rabbit hops in the meadow." },
   { word: "Lion", emoji: "🦁", image: "/pictures/lion.webp", color: "#ffe5a7", sentence: "A lion has a big, fluffy mane." },
@@ -22,6 +24,33 @@ const WAIT_MESSAGES = [
   "Almost ready for you!",
 ];
 
+function normalizeWords(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function editDistance(left: string, right: string) {
+  const row = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    let diagonal = row[0];
+    row[0] = leftIndex;
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const above = row[rightIndex];
+      row[rightIndex] = left[leftIndex - 1] === right[rightIndex - 1]
+        ? diagonal
+        : Math.min(diagonal, above, row[rightIndex - 1]) + 1;
+      diagonal = above;
+    }
+  }
+  return row[right.length];
+}
+
+function similarity(left: string, right: string) {
+  if (!left || !right) return 0;
+  if (left === right) return 1;
+  if (left.includes(right) || right.includes(left)) return 0.94;
+  return 1 - editDistance(left, right) / Math.max(left.length, right.length);
+}
+
 export default function Home() {
   const [selected, setSelected] = useState<KidWord>(WORDS[0]);
   const [galleryWords, setGalleryWords] = useState<KidWord[]>(WORDS);
@@ -36,30 +65,46 @@ export default function Home() {
     }
   });
   const [teacherVoice, setTeacherVoice] = useState<SpeechSynthesisVoice | null>(null);
+  const [speaking, setSpeaking] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [suggestions, setSuggestions] = useState<WordSuggestion[]>([]);
   const [waitStage, setWaitStage] = useState(0);
   const upgradeTokenRef = useRef(0);
+  const speechTokenRef = useRef(0);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
 
-    fetch("/api/gallery")
+    const loadGallery = () => {
+      const hour = Math.floor(Date.now() / 3_600_000);
+      fetch(`/api/gallery?hour=${hour}`, { cache: "no-store" })
+        .then((response) => response.ok ? response.json() : Promise.reject())
+        .then((result: { pictures?: Array<{ word: string; image: string; sentence: string }> }) => {
+          if (!result.pictures?.length) return;
+          const colors = ["#f8d9e4", "#ffe5a7", "#dcd8fb", "#cfe9f7", "#ffedb8"];
+          const pictures = result.pictures.map((item, index) => ({
+            word: item.word,
+            image: item.image,
+            sentence: item.sentence,
+            emoji: "",
+            color: colors[index % colors.length],
+          }));
+          setGalleryWords(pictures);
+          setSelected(pictures[hour % pictures.length]);
+          setMessage("Tap and say a word");
+        })
+        .catch(() => undefined);
+    };
+    loadGallery();
+    const galleryTimer = window.setInterval(loadGallery, 3_600_000);
+
+    fetch("/data/picture-catalog.json")
       .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((result: { pictures?: Array<{ word: string; image: string; sentence: string }> }) => {
-        if (!result.pictures?.length) return;
-        const colors = ["#f8d9e4", "#ffe5a7", "#dcd8fb", "#cfe9f7", "#ffedb8"];
-        const pictures = result.pictures.map((item, index) => ({
-          word: item.word,
-          image: item.image,
-          sentence: item.sentence,
-          emoji: "",
-          color: colors[index % colors.length],
-        }));
-        setGalleryWords(pictures);
-        setSelected((current) => pictures.find((item) => item.word.toLowerCase() === current.word.toLowerCase()) ?? pictures[0]);
-      })
+      .then((result: { items?: CatalogItem[] }) => setCatalog(result.items ?? []))
       .catch(() => undefined);
 
+    let removeVoiceListener: () => void = () => undefined;
     if ("speechSynthesis" in window) {
       const chooseTeacherVoice = () => {
         const voices = speechSynthesis.getVoices().filter((voice) => voice.lang.toLowerCase().startsWith("en"));
@@ -82,8 +127,12 @@ export default function Home() {
       };
       chooseTeacherVoice();
       speechSynthesis.addEventListener("voiceschanged", chooseTeacherVoice);
-      return () => speechSynthesis.removeEventListener("voiceschanged", chooseTeacherVoice);
+      removeVoiceListener = () => speechSynthesis.removeEventListener("voiceschanged", chooseTeacherVoice);
     }
+    return () => {
+      window.clearInterval(galleryTimer);
+      removeVoiceListener();
+    };
   }, []);
 
   useEffect(() => {
@@ -98,6 +147,7 @@ export default function Home() {
 
   function speak(text = selected.word, rate = 0.76) {
     if (!("speechSynthesis" in window)) return;
+    const speechToken = ++speechTokenRef.current;
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     if (teacherVoice) utterance.voice = teacherVoice;
@@ -105,6 +155,14 @@ export default function Home() {
     utterance.rate = rate;
     utterance.pitch = 1.04;
     utterance.volume = 1;
+    utterance.onstart = () => {
+      if (speechTokenRef.current === speechToken) setSpeaking(true);
+    };
+    const finishSpeaking = () => {
+      if (speechTokenRef.current === speechToken) setSpeaking(false);
+    };
+    utterance.onend = finishSpeaking;
+    utterance.onerror = finishSpeaking;
     speechSynthesis.speak(utterance);
   }
 
@@ -124,7 +182,11 @@ export default function Home() {
           quality?: "preview" | "high";
         };
         if (response.ok && result.image && result.quality === "high") {
-          setSelected({ ...item, image: result.image, upgrading: false });
+          const upgradedItem = { ...item, image: result.image, upgrading: false };
+          setSelected(upgradedItem);
+          setGalleryWords((current) => current.map((picture) =>
+            picture.word.toLowerCase() === item.word.toLowerCase() ? upgradedItem : picture
+          ));
           setMessage(`Your beautiful ${item.word} picture is ready!`);
           return;
         }
@@ -176,6 +238,9 @@ export default function Home() {
         upgrading: result.upgrading,
       };
       setSelected(item);
+      setGalleryWords((current) => current.some((picture) => picture.word.toLowerCase() === item.word.toLowerCase())
+        ? current.map((picture) => picture.word.toLowerCase() === item.word.toLowerCase() ? item : picture)
+        : [item, ...current]);
       setMessage(result.upgrading
         ? `Here’s your ${item.word}! Making it extra beautiful…`
         : result.cached ? `I found your saved ${item.word} picture!` : `Wonderful! Your ${item.word} picture is saved.`);
@@ -188,17 +253,65 @@ export default function Home() {
     }
   }
 
+  function chooseSuggestion(item: KidWord) {
+    setSuggestions([]);
+    void chooseWord(item.word);
+  }
+
+  function handleSpeechResults(alternatives: string[]) {
+    const heard = alternatives.map(normalizeWords).filter(Boolean);
+    if (!heard.length) {
+      setMessage("I didn’t hear that. Please try again!");
+      return;
+    }
+    const ranked = galleryWords.map((item) => ({
+      ...item,
+      score: Math.max(...heard.map((phrase) => similarity(phrase, normalizeWords(item.word)))),
+    })).sort((left, right) => right.score - left.score);
+    const best = ranked[0];
+    const exactCatalogWord = catalog.find((item) => {
+      const terms = [item.word, ...(item.searchTerms ?? [])].map(normalizeWords);
+      return heard.some((phrase) => terms.some((term) => phrase === term || phrase.includes(term)));
+    });
+
+    if (best?.score >= 0.97) {
+      setSuggestions([]);
+      void chooseWord(best.word);
+      return;
+    }
+    if (exactCatalogWord && (!best || best.score < 0.88)) {
+      setSuggestions([]);
+      void chooseWord(exactCatalogWord.word);
+      return;
+    }
+    const choices = ranked.filter((item) => item.score >= 0.48).slice(0, 3);
+    if (choices.length) {
+      setSuggestions(choices);
+      setMessage("Did you mean one of these?");
+      return;
+    }
+    setSuggestions([]);
+    setMessage(`I heard “${heard[0]}”. Please say it once more.`);
+  }
+
   function listen() {
-    type Recognition = { lang: string; interimResults: boolean; start: () => void; onresult: (e: { results: { [index: number]: { [index: number]: { transcript: string } } } }) => void; onerror: () => void; onend: () => void };
+    if (speaking || generating) return;
+    type RecognitionResult = { length: number; [index: number]: { transcript: string; confidence: number } };
+    type Recognition = { lang: string; interimResults: boolean; maxAlternatives: number; start: () => void; onresult: (e: { results: { [index: number]: RecognitionResult } }) => void; onerror: () => void; onend: () => void };
     const RecognitionClass = (window as typeof window & { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
     if (!RecognitionClass) { setMessage("Voice works best in Chrome. Tap a word below!"); return; }
     const recognition = new RecognitionClass();
-    recognition.lang = "en-US";
+    recognition.lang = "en-GB";
     recognition.interimResults = false;
-    recognition.onresult = (e) => chooseWord(e.results[0][0].transcript);
+    recognition.maxAlternatives = 5;
+    recognition.onresult = (e) => {
+      const result = e.results[0];
+      handleSpeechResults(Array.from({ length: result.length }, (_, index) => result[index].transcript));
+    };
     recognition.onerror = () => setMessage("I didn’t hear that. Please try again!");
     recognition.onend = () => setListening(false);
     setListening(true);
+    setSuggestions([]);
     setMessage("I’m listening…");
     recognition.start();
   }
@@ -259,9 +372,27 @@ export default function Home() {
         </section>
 
         <section className="voice-zone">
-          <div className={`mic-halo ${listening ? "listening" : ""} ${generating ? "creating" : ""}`}>
-            <button className="mic-button" onClick={listen} disabled={generating} aria-label="Say a word"><Mic size={37} strokeWidth={2.4} /></button>
-          </div>
+          {!listening && !generating && !speaking && !suggestions.length && (
+            <div className="mic-halo">
+              <button className="mic-button" onClick={listen} aria-label="Say a word"><Mic size={37} strokeWidth={2.4} /></button>
+            </div>
+          )}
+          {listening && <div className="listening-bubbles" aria-label="Listening"><i /><i /><i /></div>}
+          {!!suggestions.length && (
+            <div className="speech-suggestions" role="group" aria-label="Did you mean">
+              {suggestions.map((item) => (
+                <button key={item.word} onClick={() => chooseSuggestion(item)}>
+                  <span>
+                    {/* Blob and bundled WebP thumbnails are rendered directly. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={item.image} alt="" />
+                  </span>
+                  <b>{item.word}</b>
+                </button>
+              ))}
+              <button className="try-again" onClick={() => { setSuggestions([]); setMessage("Tap and say the word again"); }}>None of these</button>
+            </div>
+          )}
           <p>{message}</p>
         </section>
 

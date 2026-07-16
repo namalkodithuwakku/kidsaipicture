@@ -1,0 +1,14 @@
+{
+  "crons": [
+    { "path": "/api/cron/build-picture/1", "schedule": "15 0 * * *" },
+    { "path": "/api/cron/build-picture/2", "schedule": "15 2 * * *" },
+    { "path": "/api/cron/build-picture/3", "schedule": "15 4 * * *" },
+    { "path": "/api/cron/build-picture/4", "schedule": "15 6 * * *" },
+    { "path": "/api/cron/build-picture/5", "schedule": "15 8 * * *" },
+    { "path": "/api/cron/build-picture/6", "schedule": "15 10 * * *" },
+    { "path": "/api/cron/build-picture/7", "schedule": "15 12 * * *" },
+    { "path": "/api/cron/build-picture/8", "schedule": "15 14 * * *" },
+    { "path": "/api/cron/build-picture/9", "schedule": "15 16 * * *" },
+    { "path": "/api/cron/build-picture/10", "schedule": "15 18 * * *" }
+  ]
+}

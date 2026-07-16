@@ -1,3 +1,5 @@
+import pictureCatalog from "@/public/data/picture-catalog.json";
+
 export type KidsCategory = {
   id: string;
   label: string;
@@ -70,10 +72,18 @@ for (const [category, words] of Object.entries(CATEGORY_WORDS)) {
   for (const word of words) if (!wordCategory.has(word)) wordCategory.set(word, category);
 }
 
-export const SAFE_KIDS_WORDS = new Set(wordCategory.keys());
+type CatalogWord = { id: string; word: string; category: string; searchTerms?: string[] };
+const catalogWords = (pictureCatalog.items as CatalogWord[]);
+const catalogById = new Map(catalogWords.map((item) => [item.id, item]));
+const catalogTerms = catalogWords.flatMap((item) =>
+  [item.word, item.id.replaceAll("-", " "), ...(item.searchTerms ?? [])]
+    .map((term) => [term.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim(), item.id] as const),
+).sort((left, right) => right[0].length - left[0].length);
+
+export const SAFE_KIDS_WORDS = new Set(catalogWords.map((item) => item.id));
 
 export function categoryForWord(word: string) {
-  return wordCategory.get(word.toLowerCase()) ?? "first-words";
+  return catalogById.get(word.toLowerCase())?.category ?? wordCategory.get(word.toLowerCase()) ?? "first-words";
 }
 
 export function categoryDetails(categoryId: string) {
@@ -82,14 +92,20 @@ export function categoryDetails(categoryId: string) {
 
 export function normaliseKidsWord(raw: unknown) {
   if (typeof raw !== "string") return "";
-  const cleaned = raw.toLowerCase().replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();
+  const cleaned = raw.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
   for (const [phrase, slug] of Object.entries(SPOKEN_PHRASES)) {
     if (cleaned.includes(phrase)) return slug;
   }
-  return cleaned.split(" ").slice(0, 8).find((word) => SAFE_KIDS_WORDS.has(word)) ?? "";
+  const exact = catalogTerms.find(([term]) => term === cleaned);
+  if (exact) return exact[1];
+  const contained = catalogTerms.find(([term]) =>
+    term.length >= 3 && (` ${cleaned} `).includes(` ${term} `),
+  );
+  return contained?.[1] ?? "";
 }
 
 export function labelForWord(word: string) {
   const slug = word.toLowerCase();
-  return DISPLAY_LABELS[slug] ?? slug.charAt(0).toUpperCase() + slug.slice(1);
+  const catalogLabel = catalogById.get(slug)?.word;
+  return DISPLAY_LABELS[slug] ?? catalogLabel?.replace(/\b\w/g, (letter) => letter.toUpperCase()) ?? slug.charAt(0).toUpperCase() + slug.slice(1);
 }
