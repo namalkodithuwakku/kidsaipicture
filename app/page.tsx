@@ -33,13 +33,6 @@ const CHOICE_PRAISE = [
   "Excellent pick!",
 ];
 
-const SPEAKING_PRAISE = [
-  "Great speaking!",
-  "Lovely speaking!",
-  "You said it!",
-  "Wonderful try!",
-];
-
 const TEACHER_STYLES = [
   { name: "Miss Lily", emoji: "👩🏻‍🏫", rate: 0.84, pitch: 1.18, colour: "#ff806f" },
   { name: "Miss Maya", emoji: "👩🏼‍🏫", rate: 0.76, pitch: 1.12, colour: "#9a82d5" },
@@ -473,7 +466,8 @@ export default function Home() {
     const expected = normalizeWords(targetWord);
     const heard = alternatives.map(normalizeWords).filter(Boolean);
     if (!heard.length) {
-      setMessage("I didn’t hear that. Let’s try once more!");
+      setPracticeWord(null);
+      setMessage("Tap the mic when you want another word.");
       return;
     }
 
@@ -483,40 +477,59 @@ export default function Home() {
     );
 
     if (saidExpectedWord || bestScore >= 0.78) {
-      const praise = SPEAKING_PRAISE[Math.floor(Math.random() * SPEAKING_PRAISE.length)];
       setPracticeWord(null);
-      setMessage(`${praise} Tap the mic for another word.`);
-      window.setTimeout(() => speak(praise, 0.82), 180);
+      setMessage("Excellent! Tap the mic for another word.");
+      window.setTimeout(() => speak("Excellent!", 0.82), 180);
       return;
     }
 
     if (bestScore >= 0.48) {
-      setMessage("Good try! Say it once more.");
-      window.setTimeout(() => speak("Good try! Say it once more.", 0.78), 180);
+      setPracticeWord(null);
+      setMessage("Good try! Tap the mic when you want another word.");
+      window.setTimeout(() => speak("Good try!", 0.82), 180);
       return;
     }
 
-    setMessage(`Listen once more, then say “${targetWord}”.`);
-    window.setTimeout(() => speak(`Listen once more. ${targetWord}.`, 0.72), 180);
+    setPracticeWord(null);
+    setMessage("Nice try! Tap the mic when you want another word.");
+    window.setTimeout(() => speak("Nice try!", 0.82), 180);
   }
 
   function startListening(practiceTarget?: string) {
     type RecognitionResult = { length: number; [index: number]: { transcript: string; confidence: number } };
-    type Recognition = { lang: string; interimResults: boolean; maxAlternatives: number; start: () => void; onresult: (e: { results: { [index: number]: RecognitionResult } }) => void; onerror: () => void; onend: () => void };
+    type Recognition = { lang: string; interimResults: boolean; maxAlternatives: number; start: () => void; stop: () => void; onresult: (e: { results: { [index: number]: RecognitionResult } }) => void; onerror: () => void; onend: () => void };
     const RecognitionClass = (window as typeof window & { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
     if (!RecognitionClass) { setMessage("Voice works best in Chrome. Tap a word below!"); return; }
     const recognition = new RecognitionClass();
     recognition.lang = "en-GB";
     recognition.interimResults = false;
     recognition.maxAlternatives = 5;
+    let settled = false;
+    let answerTimer: number | undefined;
     recognition.onresult = (e) => {
+      if (settled) return;
+      settled = true;
+      if (answerTimer) window.clearTimeout(answerTimer);
       const result = e.results[0];
       const alternatives = Array.from({ length: result.length }, (_, index) => result[index].transcript);
       if (practiceTarget) handlePracticeResults(alternatives, practiceTarget);
       else handleSpeechResults(alternatives);
     };
-    recognition.onerror = () => setMessage(practiceTarget ? "I didn’t hear that. Let’s try once more!" : "I didn’t hear that. Please try again!");
-    recognition.onend = () => setListening(false);
+    recognition.onerror = () => {
+      if (answerTimer) window.clearTimeout(answerTimer);
+      if (settled) return;
+      settled = true;
+      if (practiceTarget) {
+        setPracticeWord(null);
+        setMessage("Tap the mic when you want another word.");
+      } else {
+        setMessage("I didn’t hear that. Please try again!");
+      }
+    };
+    recognition.onend = () => {
+      if (answerTimer) window.clearTimeout(answerTimer);
+      setListening(false);
+    };
     setListening(true);
     setSuggestions([]);
     setMessage(practiceTarget ? `Your turn—say “${practiceTarget}”.` : "I’m listening…");
@@ -524,6 +537,16 @@ export default function Home() {
     window.setTimeout(() => {
       try {
         recognition.start();
+        if (practiceTarget) {
+          answerTimer = window.setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            setPracticeWord(null);
+            setListening(false);
+            setMessage("Tap the mic when you want another word.");
+            try { recognition.stop(); } catch { /* The microphone has already closed. */ }
+          }, 5_000);
+        }
       } catch {
         setListening(false);
         setMessage("Tap the microphone when you’re ready.");
