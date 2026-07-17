@@ -80,6 +80,7 @@ function similarity(left: string, right: string) {
 }
 
 export default function Home() {
+  const [showStartup, setShowStartup] = useState(true);
   const [selected, setSelected] = useState<KidWord>(WORDS[0]);
   const [galleryWords, setGalleryWords] = useState<KidWord[]>(WORDS);
   const [listening, setListening] = useState(false);
@@ -143,6 +144,7 @@ export default function Home() {
   }
 
   useEffect(() => {
+    const startupTimer = window.setTimeout(() => setShowStartup(false), 1_650);
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
 
     const handleActivity = () => { void requestWakeLock(); };
@@ -215,6 +217,7 @@ export default function Home() {
       removeVoiceListener = () => speechSynthesis.removeEventListener("voiceschanged", chooseTeacherVoice);
     }
     return () => {
+      window.clearTimeout(startupTimer);
       window.clearInterval(galleryTimer);
       removeVoiceListener();
       window.removeEventListener("pointerdown", handleActivity);
@@ -319,18 +322,18 @@ export default function Home() {
 
   function chooseTeacherProfile(index: number) {
     const style = TEACHER_STYLES[index];
-    const voice = availableVoices[index % Math.max(availableVoices.length, 1)] ?? availableVoices[0];
-    if (!voice) return;
+    const voice = availableVoices[index % Math.max(availableVoices.length, 1)] ?? availableVoices[0] ?? null;
     setTeacherProfile(index);
     setTeacherVoice(voice);
     setTeacherPickerOpen(false);
     localStorage.setItem("say-see-teacher-profile", String(index));
-    localStorage.setItem("say-see-teacher-voice", voice.name);
+    if (voice) localStorage.setItem("say-see-teacher-voice", voice.name);
+    else localStorage.removeItem("say-see-teacher-voice");
     const speechToken = ++speechTokenRef.current;
     speechSynthesis.cancel();
     const preview = new SpeechSynthesisUtterance(`Hello! I’m ${style.name}. Let’s learn together.`);
-    preview.voice = voice;
-    preview.lang = voice.lang;
+    if (voice) preview.voice = voice;
+    preview.lang = voice?.lang || "en-US";
     preview.rate = style.rate;
     preview.pitch = style.pitch;
     preview.onstart = () => setSpeaking(true);
@@ -534,6 +537,25 @@ export default function Home() {
 
   return (
     <>
+      {showStartup && (
+        <div className="startup-loader" role="status" aria-label="Opening Say and See">
+          <div className="startup-sky" aria-hidden="true"><i /><i /><i /><i /></div>
+          <div className="startup-brand">
+            <div className="startup-icon-wrap" aria-hidden="true">
+              <span className="startup-orbit"><i /><i /><i /></span>
+              <div className="startup-icon">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/icons/app-logo-3d.png" alt="" />
+                <span className="startup-shine" />
+              </div>
+            </div>
+            <div className="startup-name"><span>Say</span> <b>&amp;</b> <em>See</em></div>
+            <p>Little words. Big imagination.</p>
+            <div className="startup-progress" aria-hidden="true"><span /></div>
+            <small>Ready to learn and smile</small>
+          </div>
+        </div>
+      )}
       {generating && (
         <div className="magic-wait-backdrop" role="dialog" aria-modal="true" aria-label="Creating your picture">
           <div className="magic-wait-card">
@@ -572,8 +594,7 @@ export default function Home() {
           <div className="word-heading">
             <button className="mini-action" onClick={() => speakLesson(selected, "Let’s learn")} aria-label={`Hear the ${selected.word} lesson`}><Volume2 size={21} /></button>
             <h2 className={selected.word.length >= 10 ? "extra-long" : selected.word.length >= 8 ? "long" : ""}>{selected.word}</h2>
-            {!!availableVoices.length ? (
-              <div className="teacher-voice-control">
+            <div className="teacher-voice-control">
                 <button className="teacher-voice-button" type="button" onClick={() => setTeacherPickerOpen((open) => !open)} aria-label={`Choose teacher voice. ${teacherStyle.name} is selected`} aria-expanded={teacherPickerOpen}>
                   <span aria-hidden="true">{teacherStyle.emoji}</span>
                 </button>
@@ -592,7 +613,6 @@ export default function Home() {
                   </div>
                 )}
               </div>
-            ) : <span />}
           </div>
 
           <div className="letter-row" aria-label={`${selected.word} is spelled ${letters.join(" ")}`}>
