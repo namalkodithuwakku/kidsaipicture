@@ -106,6 +106,7 @@ export default function Home() {
     if (document.visibilityState !== "visible" || wakeLockRef.current) return;
     const wakeNavigator = navigator as Navigator & {
       wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void>; addEventListener: (type: "release", listener: () => void) => void }> };
+    };
     try {
       const lock = await wakeNavigator.wakeLock?.request("screen");
       if (!lock) return;
