@@ -40,6 +40,14 @@ const SPEAKING_PRAISE = [
   "Wonderful try!",
 ];
 
+const TEACHER_STYLES = [
+  { name: "Miss Lily", emoji: "👩🏻‍🏫", rate: 0.84, pitch: 1.18, colour: "#ff806f" },
+  { name: "Miss Maya", emoji: "👩🏼‍🏫", rate: 0.76, pitch: 1.12, colour: "#9a82d5" },
+  { name: "Miss Emma", emoji: "👩🏽‍🏫", rate: 0.88, pitch: 1.22, colour: "#efa82e" },
+  { name: "Miss Sofia", emoji: "👩🏾‍🏫", rate: 0.78, pitch: 1.08, colour: "#5d9bd8" },
+  { name: "Miss Aisha", emoji: "👩🏿‍🏫", rate: 0.72, pitch: 1.04, colour: "#65b99d" },
+] as const;
+
 function randomChoicePraise() {
   return CHOICE_PRAISE[Math.floor(Math.random() * CHOICE_PRAISE.length)];
 }
@@ -78,6 +86,8 @@ export default function Home() {
   const [message, setMessage] = useState("Tap and say a word");
   const [teacherVoice, setTeacherVoice] = useState<SpeechSynthesisVoice | null>(null);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [teacherProfile, setTeacherProfile] = useState(0);
+  const [teacherPickerOpen, setTeacherPickerOpen] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [activeLetter, setActiveLetter] = useState<number | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -88,9 +98,59 @@ export default function Home() {
   const upgradeTokenRef = useRef(0);
   const speechTokenRef = useRef(0);
   const galleryRef = useRef<HTMLDivElement>(null);
+  const wakeLockRef = useRef<{ release: () => Promise<void>; addEventListener: (type: "release", listener: () => void) => void } | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  async function requestWakeLock() {
+    if (document.visibilityState !== "visible" || wakeLockRef.current) return;
+    const wakeNavigator = navigator as Navigator & {
+      wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void>; addEventListener: (type: "release", listener: () => void) => void }> };
+    try {
+      const lock = await wakeNavigator.wakeLock?.request("screen");
+      if (!lock) return;
+      wakeLockRef.current = lock;
+      lock.addEventListener("release", () => {
+        if (wakeLockRef.current === lock) wakeLockRef.current = null;
+      });
+    } catch {
+      // Some browsers or battery-saving modes do not provide Screen Wake Lock.
+    }
+  }
+
+  function playListeningChime() {
+    try {
+      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const context = audioContextRef.current ?? new AudioContextClass();
+      audioContextRef.current = context;
+      void context.resume();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const start = context.currentTime;
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(520, start);
+      oscillator.frequency.exponentialRampToValueAtTime(660, start + 0.16);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.045, start + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.2);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.21);
+    } catch {
+      // Listening still works if a browser blocks programmatic audio.
+    }
+  }
 
   useEffect(() => {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
+
+    const handleActivity = () => { void requestWakeLock(); };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void requestWakeLock();
+    };
+    window.addEventListener("pointerdown", handleActivity, { passive: true });
+    document.addEventListener("visibilitychange", handleVisibility);
 
     const loadGallery = () => {
       const hour = Math.floor(Date.now() / 3_600_000);
@@ -141,9 +201,14 @@ export default function Home() {
           }))
           .sort((a, b) => b.score - a.score);
         const sortedVoices = scored.map((item) => item.voice);
+        const savedProfile = Math.min(
+          TEACHER_STYLES.length - 1,
+          Math.max(0, Number(localStorage.getItem("say-see-teacher-profile")) || 0),
+        );
         const savedVoiceName = localStorage.getItem("say-see-teacher-voice");
         setAvailableVoices(sortedVoices);
-        setTeacherVoice(sortedVoices.find((voice) => voice.name === savedVoiceName) ?? sortedVoices[0] ?? null);
+        setTeacherProfile(savedProfile);
+        setTeacherVoice(sortedVoices.find((voice) => voice.name === savedVoiceName) ?? sortedVoices[savedProfile % Math.max(sortedVoices.length, 1)] ?? sortedVoices[0] ?? null);
       };
       chooseTeacherVoice();
       speechSynthesis.addEventListener("voiceschanged", chooseTeacherVoice);
@@ -152,6 +217,12 @@ export default function Home() {
     return () => {
       window.clearInterval(galleryTimer);
       removeVoiceListener();
+      window.removeEventListener("pointerdown", handleActivity);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      void wakeLockRef.current?.release();
+      wakeLockRef.current = null;
+      void audioContextRef.current?.close();
+      audioContextRef.current = null;
     };
   }, []);
 
@@ -173,6 +244,7 @@ export default function Home() {
   }, [selected.word]);
 
   const letters = useMemo(() => selected.word.toUpperCase().split(""), [selected]);
+  const teacherStyle = TEACHER_STYLES[teacherProfile];
 
   function speak(text = selected.word, rate = 0.82) {
     if (!("speechSynthesis" in window)) return;
@@ -183,8 +255,8 @@ export default function Home() {
     const utterance = new SpeechSynthesisUtterance(text);
     if (teacherVoice) utterance.voice = teacherVoice;
     utterance.lang = teacherVoice?.lang || "en-US";
-    utterance.rate = rate;
-    utterance.pitch = 1.15;
+    utterance.rate = Math.max(0.6, Math.min(1, rate * (teacherStyle.rate / 0.82)));
+    utterance.pitch = teacherStyle.pitch;
     utterance.volume = 1;
     utterance.onstart = () => {
       if (speechTokenRef.current === speechToken) setSpeaking(true);
@@ -208,8 +280,8 @@ export default function Home() {
       const utterance = new SpeechSynthesisUtterance(text);
       if (teacherVoice) utterance.voice = teacherVoice;
       utterance.lang = teacherVoice?.lang || "en-US";
-      utterance.rate = rate;
-      utterance.pitch = 1.15;
+      utterance.rate = Math.max(0.6, Math.min(1, rate * (teacherStyle.rate / 0.82)));
+      utterance.pitch = teacherStyle.pitch;
       utterance.volume = 1;
       return utterance;
     };
@@ -245,18 +317,22 @@ export default function Home() {
     lesson.forEach((utterance) => speechSynthesis.speak(utterance));
   }
 
-  function changeTeacherVoice(name: string) {
-    const voice = availableVoices.find((item) => item.name === name);
+  function chooseTeacherProfile(index: number) {
+    const style = TEACHER_STYLES[index];
+    const voice = availableVoices[index % Math.max(availableVoices.length, 1)] ?? availableVoices[0];
     if (!voice) return;
+    setTeacherProfile(index);
     setTeacherVoice(voice);
+    setTeacherPickerOpen(false);
+    localStorage.setItem("say-see-teacher-profile", String(index));
     localStorage.setItem("say-see-teacher-voice", voice.name);
     const speechToken = ++speechTokenRef.current;
     speechSynthesis.cancel();
-    const preview = new SpeechSynthesisUtterance("Hello! Let’s learn together.");
+    const preview = new SpeechSynthesisUtterance(`Hello! I’m ${style.name}. Let’s learn together.`);
     preview.voice = voice;
     preview.lang = voice.lang;
-    preview.rate = 0.82;
-    preview.pitch = 1.15;
+    preview.rate = style.rate;
+    preview.pitch = style.pitch;
     preview.onstart = () => setSpeaking(true);
     preview.onend = () => {
       if (speechTokenRef.current === speechToken) setSpeaking(false);
@@ -440,7 +516,15 @@ export default function Home() {
     setListening(true);
     setSuggestions([]);
     setMessage(practiceTarget ? `Your turn—say “${practiceTarget}”.` : "I’m listening…");
-    recognition.start();
+    playListeningChime();
+    window.setTimeout(() => {
+      try {
+        recognition.start();
+      } catch {
+        setListening(false);
+        setMessage("Tap the microphone when you’re ready.");
+      }
+    }, 230);
   }
 
   function listen() {
@@ -489,9 +573,25 @@ export default function Home() {
             <button className="mini-action" onClick={() => speakLesson(selected, "Let’s learn")} aria-label={`Hear the ${selected.word} lesson`}><Volume2 size={21} /></button>
             <h2 className={selected.word.length >= 10 ? "extra-long" : selected.word.length >= 8 ? "long" : ""}>{selected.word}</h2>
             {!!availableVoices.length ? (
-              <select className="voice-select word-voice-select" value={teacherVoice?.name ?? ""} onChange={(event) => changeTeacherVoice(event.target.value)} aria-label="Choose teacher voice">
-                {availableVoices.slice(0, 5).map((voice, index) => <option key={voice.name} value={voice.name}>V{index + 1}</option>)}
-              </select>
+              <div className="teacher-voice-control">
+                <button className="teacher-voice-button" type="button" onClick={() => setTeacherPickerOpen((open) => !open)} aria-label={`Choose teacher voice. ${teacherStyle.name} is selected`} aria-expanded={teacherPickerOpen}>
+                  <span aria-hidden="true">{teacherStyle.emoji}</span>
+                </button>
+                {teacherPickerOpen && (
+                  <div className="teacher-picker" role="group" aria-label="Choose a teacher">
+                    <strong>Choose your teacher</strong>
+                    <div>
+                      {TEACHER_STYLES.map((style, index) => (
+                        <button key={style.name} type="button" className={teacherProfile === index ? "active" : ""} onClick={() => chooseTeacherProfile(index)} style={{ "--teacher-colour": style.colour } as React.CSSProperties}>
+                          <span aria-hidden="true">{style.emoji}</span>
+                          <b>{style.name}</b>
+                        </button>
+                      ))}
+                    </div>
+                    <small>Tap a teacher to hear her voice</small>
+                  </div>
+                )}
+              </div>
             ) : <span />}
           </div>
 
