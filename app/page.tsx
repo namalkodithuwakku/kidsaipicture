@@ -33,6 +33,13 @@ const CHOICE_PRAISE = [
   "Excellent pick!",
 ];
 
+const SPEAKING_PRAISE = [
+  "Great speaking!",
+  "Lovely speaking!",
+  "You said it!",
+  "Wonderful try!",
+];
+
 function randomChoicePraise() {
   return CHOICE_PRAISE[Math.floor(Math.random() * CHOICE_PRAISE.length)];
 }
@@ -76,6 +83,7 @@ export default function Home() {
   const [generating, setGenerating] = useState(false);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [suggestions, setSuggestions] = useState<WordSuggestion[]>([]);
+  const [practiceWord, setPracticeWord] = useState<string | null>(null);
   const [waitStage, setWaitStage] = useState(0);
   const upgradeTokenRef = useRef(0);
   const speechTokenRef = useRef(0);
@@ -209,6 +217,8 @@ export default function Home() {
       if (speechTokenRef.current !== speechToken) return;
       setActiveLetter(null);
       setSpeaking(false);
+      setPracticeWord(item.word);
+      setMessage(`Now you try! Say “${item.word}”.`);
     };
     const lesson = [makeUtterance(`${praise} ${item.word}.`, 0.78)];
     item.word.toUpperCase().split("").forEach((letter, index) => {
@@ -277,6 +287,7 @@ export default function Home() {
 
   async function chooseWord(raw: string) {
     const requestToken = ++upgradeTokenRef.current;
+    setPracticeWord(null);
     const cleaned = raw.toLowerCase().replace(/[^a-z ]/g, "").trim();
     const match = galleryWords.find((item) => cleaned.includes(item.word.toLowerCase()));
     if (match) {
@@ -372,6 +383,35 @@ export default function Home() {
     setMessage(`I heard “${heard[0]}”. Please say it once more.`);
   }
 
+  function handlePracticeResults(alternatives: string[]) {
+    const expected = normalizeWords(practiceWord ?? selected.word);
+    const heard = alternatives.map(normalizeWords).filter(Boolean);
+    if (!heard.length) {
+      setMessage("I didn’t hear that. Let’s try once more!");
+      return;
+    }
+
+    const bestScore = Math.max(...heard.map((phrase) => similarity(phrase, expected)));
+    const saidExpectedWord = heard.some((phrase) =>
+      phrase === expected || (` ${phrase} `).includes(` ${expected} `),
+    );
+
+    if (saidExpectedWord || bestScore >= 0.78) {
+      const praise = SPEAKING_PRAISE[Math.floor(Math.random() * SPEAKING_PRAISE.length)];
+      setPracticeWord(null);
+      setMessage(`${praise} Tap the mic for another word.`);
+      return;
+    }
+
+    if (bestScore >= 0.48) {
+      setMessage("Good try! Say it once more.");
+      return;
+    }
+
+    setMessage(`Listen once more, then say “${selected.word}”.`);
+    window.setTimeout(() => speak(selected.word, 0.72), 250);
+  }
+
   function listen() {
     if (speaking || generating) return;
     type RecognitionResult = { length: number; [index: number]: { transcript: string; confidence: number } };
@@ -384,13 +424,15 @@ export default function Home() {
     recognition.maxAlternatives = 5;
     recognition.onresult = (e) => {
       const result = e.results[0];
-      handleSpeechResults(Array.from({ length: result.length }, (_, index) => result[index].transcript));
+      const alternatives = Array.from({ length: result.length }, (_, index) => result[index].transcript);
+      if (practiceWord) handlePracticeResults(alternatives);
+      else handleSpeechResults(alternatives);
     };
     recognition.onerror = () => setMessage("I didn’t hear that. Please try again!");
     recognition.onend = () => setListening(false);
     setListening(true);
     setSuggestions([]);
-    setMessage("I’m listening…");
+    setMessage(practiceWord ? `Your turn—say “${practiceWord}”.` : "I’m listening…");
     recognition.start();
   }
 
@@ -451,7 +493,7 @@ export default function Home() {
           <div className="section-title"><h3>Pick another word</h3><span>Swipe to explore →</span></div>
           <div className="word-list" ref={galleryRef}>
             {galleryWords.map((item) => (
-              <button data-word={item.word.toLowerCase()} key={item.word} disabled={generating} onClick={() => { if (generating) return; const praise = randomChoicePraise(); upgradeTokenRef.current += 1; setSelected(item); setMessage(`${praise} ${item.word}`); setTimeout(() => speakLesson(item, praise), 120); }} className={selected.word === item.word ? "active" : ""}>
+              <button data-word={item.word.toLowerCase()} key={item.word} disabled={generating} onClick={() => { if (generating) return; const praise = randomChoicePraise(); upgradeTokenRef.current += 1; setPracticeWord(null); setSelected(item); setMessage(`${praise} ${item.word}`); setTimeout(() => speakLesson(item, praise), 120); }} className={selected.word === item.word ? "active" : ""}>
                 <span style={{ background: item.color }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={item.image} alt="" loading="lazy" />
@@ -467,7 +509,7 @@ export default function Home() {
           <div className="dock-center">
           {!listening && !generating && !speaking && !suggestions.length && (
             <div className="mic-halo">
-              <button className="mic-button" onClick={listen} aria-label="Say a word"><Mic size={37} strokeWidth={2.4} /></button>
+              <button className="mic-button" onClick={listen} aria-label={practiceWord ? `Repeat ${practiceWord}` : "Say a word"}><Mic size={37} strokeWidth={2.4} /></button>
             </div>
           )}
           {listening && <div className="listening-bubbles" aria-label="Listening"><i /><i /><i /></div>}
