@@ -1,5 +1,5 @@
-import { del, list, put, type ListBlobResultBlob } from "@vercel/blob";
-import { after, NextRequest, NextResponse } from "next/server";
+import { list, put } from "@vercel/blob";
+import { NextRequest, NextResponse } from "next/server";
 import { categoryForWord, labelForWord, normaliseKidsWord } from "@/lib/kids-catalog";
 
 export const runtime = "nodejs";
@@ -34,8 +34,8 @@ function pathsFor(word: string) {
   return {
     legacy: `kids-pictures/${word}.webp`,
     preview: `kids-pictures/${word}-preview.webp`,
+    low: `kids-pictures/${word}-low.webp`,
     high: `kids-pictures/${word}-high.webp`,
-    marker: `kids-pictures/${word}-upgrading.txt`,
   };
 }
 
@@ -46,19 +46,19 @@ async function findPictures(word: string) {
     paths,
     legacy: result.blobs.find((blob) => blob.pathname === paths.legacy),
     preview: result.blobs.find((blob) => blob.pathname === paths.preview),
+    low: result.blobs.find((blob) => blob.pathname === paths.low),
     high: result.blobs.find((blob) => blob.pathname === paths.high),
-    marker: result.blobs.find((blob) => blob.pathname === paths.marker),
   };
 }
 
-function pictureResponse(word: string, blob: { url: string }, quality: "preview" | "high", cached: boolean) {
+function pictureResponse(word: string, blob: { url: string }, quality: "low" | "high", cached: boolean) {
   return NextResponse.json({
     word: titleCase(word),
     image: blob.url,
     sentence: sentenceFor(word),
     category: categoryForWord(word),
     quality,
-    upgrading: quality === "preview",
+    upgrading: false,
     cached,
   });
 }
@@ -129,57 +129,16 @@ async function savePicture(pathname: string, bytes: Buffer) {
   }
 }
 
-async function claimUpgrade(word: string, existingMarker?: ListBlobResultBlob) {
-  const { marker } = pathsFor(word);
-  if (existingMarker) {
-    const stale = Date.now() - existingMarker.uploadedAt.getTime() > 10 * 60_000;
-    if (!stale) return false;
-    await del(existingMarker.url).catch(() => undefined);
-  }
-
-  try {
-    await put(marker, new Date().toISOString(), {
-      access: "public",
-      addRandomSuffix: false,
-      allowOverwrite: false,
-      contentType: "text/plain",
-      cacheControlMaxAge: 60,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function upgradeInBackground(word: string) {
-  const { high, marker } = pathsFor(word);
-  try {
-    const current = await findPictures(word);
-    if (current.high || current.legacy) return;
-    const bytes = await createImage(word, "high", 220_000);
-    await savePicture(high, bytes);
-  } catch (error) {
-    console.error("High-quality background upgrade failed", word, error);
-  } finally {
-    await del(marker).catch(() => undefined);
-  }
-}
-
-async function scheduleUpgrade(word: string, marker?: ListBlobResultBlob) {
-  if (await claimUpgrade(word, marker)) {
-    after(() => upgradeInBackground(word));
-  }
-}
-
 export async function GET(request: NextRequest) {
   try {
     const word = parseSafeWord(request.nextUrl.searchParams.get("word"));
     if (!word) return NextResponse.json({ error: "Friendly word required." }, { status: 400 });
 
     const pictures = await findPictures(word);
-    const finalPicture = pictures.high ?? pictures.legacy;
-    if (finalPicture) return pictureResponse(word, finalPicture, "high", true);
-    if (pictures.preview) return pictureResponse(word, pictures.preview, "preview", true);
+    const premiumPicture = pictures.high ?? pictures.legacy;
+    if (premiumPicture) return pictureResponse(word, premiumPicture, "high", true);
+    const lowPicture = pictures.low ?? pictures.preview;
+    if (lowPicture) return pictureResponse(word, lowPicture, "low", true);
     return NextResponse.json({ status: "missing" }, { status: 404 });
   } catch (error) {
     console.error("Picture status route failed", error);
@@ -206,13 +165,10 @@ export async function POST(request: NextRequest) {
     }
 
     const pictures = await findPictures(word);
-    const finalPicture = pictures.high ?? pictures.legacy;
-    if (finalPicture) return pictureResponse(word, finalPicture, "high", true);
-
-    if (pictures.preview) {
-      await scheduleUpgrade(word, pictures.marker);
-      return pictureResponse(word, pictures.preview, "preview", true);
-    }
+    const premiumPicture = pictures.high ?? pictures.legacy;
+    if (premiumPicture) return pictureResponse(word, premiumPicture, "high", true);
+    const existingLowPicture = pictures.low ?? pictures.preview;
+    if (existingLowPicture) return pictureResponse(word, existingLowPicture, "low", true);
 
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
     if (isRateLimited(ip)) {
@@ -222,10 +178,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const previewBytes = await createImage(word, "low", 70_000);
-    const preview = await savePicture(pictures.paths.preview, previewBytes);
-    await scheduleUpgrade(word, pictures.marker);
-    return pictureResponse(word, preview, "preview", false);
+    const lowBytes = await createImage(word, "low", 70_000);
+    const lowPicture = await savePicture(pictures.paths.low, lowBytes);
+    return pictureResponse(word, lowPicture, "low", false);
   } catch (error) {
     console.error("Picture route failed", error);
     const code = (error as Error & { code?: string })?.code;

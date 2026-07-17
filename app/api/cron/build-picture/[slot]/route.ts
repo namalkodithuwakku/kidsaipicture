@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import { list, put, type ListBlobResultBlob } from "@vercel/blob";
+import { del, list, put, type ListBlobResultBlob } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 import pictureCatalog from "@/public/data/picture-catalog.json";
 
@@ -33,7 +33,7 @@ function imagePrompt(word: string) {
   ].join(" ");
 }
 
-async function createHighQualityImage(word: string) {
+async function createLowCostImage(word: string) {
   const response = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
     headers: {
@@ -44,9 +44,9 @@ async function createHighQualityImage(word: string) {
       model: "gpt-image-2",
       prompt: imagePrompt(word),
       size: "1024x1024",
-      quality: "high",
+      quality: "low",
       output_format: "webp",
-      output_compression: 90,
+      output_compression: 82,
     }),
     signal: AbortSignal.timeout(240_000),
   });
@@ -78,21 +78,40 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slo
     const blobs = await listAllBlobs();
     const completedIds = new Set(localIds);
     const skippedIds = new Set<string>();
+    const activeLockIds = new Set<string>();
+    const staleLockUrls: string[] = [];
     for (const blob of blobs) {
-      const completed = blob.pathname.match(/^kids-pictures\/(.+?)(?:-high)?\.webp$/i);
+      const completed = blob.pathname.match(/^kids-pictures\/(.+?)(?:-(?:low|high))?\.webp$/i);
       if (completed && !blob.pathname.endsWith("-preview.webp")) completedIds.add(completed[1].toLowerCase());
       const skipped = blob.pathname.match(/^kids-pictures\/_daily-skipped\/(.+)\.txt$/i);
       if (skipped) skippedIds.add(skipped[1].toLowerCase());
+      const lock = blob.pathname.match(/^kids-pictures\/_daily-locks\/(.+)\.txt$/i);
+      if (lock) {
+        if (Date.now() - blob.uploadedAt.getTime() > 15 * 60_000) staleLockUrls.push(blob.url);
+        else activeLockIds.add(lock[1].toLowerCase());
+      }
     }
+    if (staleLockUrls.length) await Promise.all(staleLockUrls.map((url) => del(url).catch(() => undefined)));
 
-    const next = catalog.find((item) => !completedIds.has(item.id) && !skippedIds.has(item.id));
+    const next = catalog.find((item) =>
+      !completedIds.has(item.id) && !skippedIds.has(item.id) && !activeLockIds.has(item.id)
+    );
     if (!next) {
       return NextResponse.json({ success: true, complete: true, completed: completedIds.size, total: catalog.length });
     }
 
+    let lockUrl = "";
     try {
-      const bytes = await createHighQualityImage(next.word);
-      const blob = await put(`kids-pictures/${next.id}-high.webp`, bytes, {
+      try {
+        const lock = await put(`kids-pictures/_daily-locks/${next.id}.txt`, new Date().toISOString(), {
+          access: "public", addRandomSuffix: false, allowOverwrite: false, contentType: "text/plain",
+        });
+        lockUrl = lock.url;
+      } catch {
+        return NextResponse.json({ success: true, slot, claimed: true, word: next.word });
+      }
+      const bytes = await createLowCostImage(next.word);
+      const blob = await put(`kids-pictures/${next.id}-low.webp`, bytes, {
         access: "public",
         addRandomSuffix: false,
         allowOverwrite: false,
@@ -103,6 +122,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slo
         success: true,
         slot,
         generated: next.word,
+        quality: "low",
         image: blob.url,
         completed: completedIds.size + 1,
         remaining: Math.max(0, catalog.length - completedIds.size - skippedIds.size - 1),
@@ -116,6 +136,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ slo
         });
       }
       throw error;
+    } finally {
+      if (lockUrl) await del(lockUrl).catch(() => undefined);
     }
   } catch (error) {
     console.error("Daily picture builder failed", slot, error);

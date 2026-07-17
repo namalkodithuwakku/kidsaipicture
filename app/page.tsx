@@ -257,7 +257,7 @@ export default function Home() {
         const response = await fetch(`/api/pictures?word=${encodeURIComponent(item.word)}`, { cache: "no-store" });
         const result = await response.json() as {
           image?: string;
-          quality?: "preview" | "high";
+          quality?: "low" | "preview" | "high";
         };
         if (response.ok && result.image && result.quality === "high") {
           const upgradedItem = { ...item, image: result.image, upgrading: false };
@@ -300,7 +300,7 @@ export default function Home() {
         image?: string;
         sentence?: string;
         cached?: boolean;
-        quality?: "preview" | "high";
+        quality?: "low" | "preview" | "high";
         upgrading?: boolean;
         error?: string;
       };

@@ -78,10 +78,11 @@ export async function GET() {
     const bestBlobByWord = new Map<string, { blob: ListBlobResultBlob; rank: number }>();
     try {
       for (const blob of await listSharedPictures()) {
-        const match = blob.pathname.match(/^kids-pictures\/(.+?)(?:-(preview|high))?\.webp$/i);
+        const match = blob.pathname.match(/^kids-pictures\/(.+?)(?:-(preview|low|high))?\.webp$/i);
         if (!match) continue;
         const key = match[1].toLowerCase();
-        const rank = match[2]?.toLowerCase() === "high" ? 3 : match[2]?.toLowerCase() === "preview" ? 1 : 2;
+        const quality = match[2]?.toLowerCase();
+        const rank = quality === "high" ? 3 : quality === "preview" ? 1 : 2;
         const current = bestBlobByWord.get(key);
         if (!current || rank > current.rank) bestBlobByWord.set(key, { blob, rank });
       }
@@ -102,7 +103,7 @@ export async function GET() {
         speech: item.speech,
         sentence: `Let’s look at this ${item.word}.`,
         uploadedAt: blob.uploadedAt,
-        ...(rank === 1 ? { upgrading: true } : {}),
+        ...(rank === 1 ? { upgrading: false } : {}),
       });
     }
     sharedPictures.sort((left, right) => right.uploadedAt.getTime() - left.uploadedAt.getTime());
