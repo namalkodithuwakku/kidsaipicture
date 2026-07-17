@@ -1,5 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { expansionCollections } from "./catalog-expansion.mjs";
+
+const TARGET_ITEMS = 3000;
+const BUNDLE_SIZE = 20;
 
 const collections = [
   ["first-words", "First Words", 1, `apple|baby|ball|bed|book|bottle|box|boy|car|cat|chair|child|cup|daddy|dog|door|drink|eat|girl|go|hello|home|house|juice|milk|mommy|more|no|please|shoe|sit|sleep|spoon|stop|sun|table|thank you|toy|water|yes`],
@@ -55,7 +59,7 @@ for (const [category, categoryTitle, level, words] of collections) {
     .filter((word) => !excludedWords.has(word));
   for (const word of entries) {
     const id = slugify(word);
-    const bundle = `pack-${String(Math.floor(items.length / 20) + 1).padStart(2, "0")}`;
+    const bundle = `pack-${String(Math.floor(items.length / BUNDLE_SIZE) + 1).padStart(2, "0")}`;
     items.push({
       id,
       word,
@@ -70,28 +74,71 @@ for (const [category, categoryTitle, level, words] of collections) {
   }
 }
 
+// Preserve the original 1,000 entries and their order, then append reviewed
+// expansion terms until the catalog reaches exactly 3,000 unique IDs.
+const existingIds = new Set(items.map((item) => item.id));
+const expansionQueues = expansionCollections.map(([category, categoryTitle, level, words]) => ({
+  category,
+  categoryTitle,
+  level,
+  entries: words.split("|").map((word) => word.trim()).filter(Boolean),
+  index: 0
+}));
+
+while (items.length < TARGET_ITEMS) {
+  let addedThisRound = 0;
+  for (const queue of expansionQueues) {
+    while (queue.index < queue.entries.length) {
+      const word = queue.entries[queue.index++];
+      const id = slugify(word);
+      if (!id || existingIds.has(id)) continue;
+      existingIds.add(id);
+      const bundle = `pack-${String(Math.floor(items.length / BUNDLE_SIZE) + 1).padStart(2, "0")}`;
+      items.push({
+        id,
+        word,
+        category: queue.category,
+        categoryTitle: queue.categoryTitle,
+        level: queue.level,
+        bundle,
+        image: `/pictures/${queue.category}/${id}.webp`,
+        speech: word,
+        searchTerms: [...new Set([word.toLowerCase(), id.replaceAll("-", " ")])]
+      });
+      addedThisRound += 1;
+      break;
+    }
+    if (items.length >= TARGET_ITEMS) break;
+  }
+  if (!addedThisRound) break;
+}
+
 const duplicateIds = [...new Set(items.filter((item, index) =>
   items.findIndex((candidate) => candidate.id === item.id) !== index
 ).map((item) => item.id))];
 
-if (items.length !== 1000) throw new Error(`Catalog contains ${items.length} entries; expected 1000.`);
+if (items.length !== TARGET_ITEMS) throw new Error(`Catalog contains ${items.length} entries; expected ${TARGET_ITEMS}.`);
 if (duplicateIds.length) throw new Error(`Duplicate IDs: ${duplicateIds.join(", ")}`);
 
+const activeCollections = [...collections, ...expansionCollections]
+  .filter(([id]) => items.some((item) => item.category === id));
+
 const catalog = {
-  version: 1,
-  title: "Say and See — 1,000 Kids' Words",
-  description: "A curated, child-safe visual vocabulary catalog for preschool and early-primary learners.",
+  version: 2,
+  title: "Say and See — 3,000 Safe Visual Words",
+  description: "A source-informed, curated and child-safe visual English vocabulary for young and early-stage learners.",
+  sourceNote: "Original selection informed by Cambridge Young Learners and English Vocabulary Profile learning domains, British Council LearnEnglish Kids topics, and Stanford Wordbank child-language research; not an official reproduction or endorsement.",
   totalItems: items.length,
-  totalCategories: collections.length,
+  totalCategories: activeCollections.length,
   imageFormat: "webp",
   imageSize: "1024x1024",
-  collections: collections.map(([id, title, level]) => ({
+  collections: activeCollections.map(([id, title, level]) => ({
     id,
     title,
     level,
     itemCount: items.filter((item) => item.category === id).length
   })),
-  bundles: Array.from({ length: 50 }, (_, index) => {
+  bundles: Array.from({ length: Math.ceil(items.length / BUNDLE_SIZE) }, (_, index) => {
     const id = `pack-${String(index + 1).padStart(2, "0")}`;
     const bundleItems = items.filter((item) => item.bundle === id);
     return {
@@ -112,4 +159,4 @@ await writeFile(
   "utf8"
 );
 
-console.log(`Created ${items.length} unique words across ${collections.length} collections.`);
+console.log(`Created ${items.length} unique words across ${activeCollections.length} collections.`);
