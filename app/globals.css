@@ -37,6 +37,7 @@ body{overflow:hidden}.page-wrap{height:100dvh;min-height:0}.app-shell{display:fl
 
 /* Final handset polish */
 .picture-frame{height:min(39dvh,calc(100vw - 34px))}.word-voice-select{width:39px;height:36px;padding-left:6px;padding-right:12px;border-radius:13px;font-size:9px;box-shadow:0 3px 0 #c9bae8,0 6px 11px #75659a20}.dock-item{color:#958aa9}.dock-item:disabled{opacity:.7}.dock-center .teacher-speaking{position:absolute;display:grid;place-items:center;gap:0}.dock-center .teacher-speaking>svg{position:relative;top:-3px}.dock-center .teacher-speaking>span{position:absolute;left:50%;bottom:8px;transform:translateX(-50%)}
+.sentence.practice-prompt{color:#5f5689;background:linear-gradient(135deg,#fff3c9,#f0e8ff 55%,#e2f3ff);box-shadow:inset 0 0 0 1px #fff,0 4px 10px #7c6c9b14}
 @media(max-height:700px){.picture-frame{height:min(35dvh,calc(100vw - 42px))}.dock-center .teacher-speaking>span{bottom:6px}}
 
 /* Keep spoken feedback clearly between the gallery and microphone */

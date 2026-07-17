@@ -229,11 +229,17 @@ export default function Home() {
       utterance.onerror = finishLesson;
       lesson.push(utterance);
     });
-    const sentence = makeUtterance(item.sentence, 0.78);
+    const sentence = makeUtterance(`Now you try. Say ${item.word}.`, 0.78);
     sentence.onstart = () => {
-      if (speechTokenRef.current === speechToken) setActiveLetter(null);
+      if (speechTokenRef.current !== speechToken) return;
+      setActiveLetter(null);
+      setPracticeWord(item.word);
+      setMessage(`Now you try! Say “${item.word}”.`);
     };
-    sentence.onend = finishLesson;
+    sentence.onend = () => {
+      finishLesson();
+      window.setTimeout(() => startListening(item.word), 300);
+    };
     sentence.onerror = finishLesson;
     lesson.push(sentence);
     lesson.forEach((utterance) => speechSynthesis.speak(utterance));
@@ -383,8 +389,8 @@ export default function Home() {
     setMessage(`I heard “${heard[0]}”. Please say it once more.`);
   }
 
-  function handlePracticeResults(alternatives: string[]) {
-    const expected = normalizeWords(practiceWord ?? selected.word);
+  function handlePracticeResults(alternatives: string[], targetWord: string) {
+    const expected = normalizeWords(targetWord);
     const heard = alternatives.map(normalizeWords).filter(Boolean);
     if (!heard.length) {
       setMessage("I didn’t hear that. Let’s try once more!");
@@ -400,20 +406,21 @@ export default function Home() {
       const praise = SPEAKING_PRAISE[Math.floor(Math.random() * SPEAKING_PRAISE.length)];
       setPracticeWord(null);
       setMessage(`${praise} Tap the mic for another word.`);
+      window.setTimeout(() => speak(praise, 0.82), 180);
       return;
     }
 
     if (bestScore >= 0.48) {
       setMessage("Good try! Say it once more.");
+      window.setTimeout(() => speak("Good try! Say it once more.", 0.78), 180);
       return;
     }
 
-    setMessage(`Listen once more, then say “${selected.word}”.`);
-    window.setTimeout(() => speak(selected.word, 0.72), 250);
+    setMessage(`Listen once more, then say “${targetWord}”.`);
+    window.setTimeout(() => speak(`Listen once more. ${targetWord}.`, 0.72), 180);
   }
 
-  function listen() {
-    if (speaking || generating) return;
+  function startListening(practiceTarget?: string) {
     type RecognitionResult = { length: number; [index: number]: { transcript: string; confidence: number } };
     type Recognition = { lang: string; interimResults: boolean; maxAlternatives: number; start: () => void; onresult: (e: { results: { [index: number]: RecognitionResult } }) => void; onerror: () => void; onend: () => void };
     const RecognitionClass = (window as typeof window & { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
@@ -425,15 +432,20 @@ export default function Home() {
     recognition.onresult = (e) => {
       const result = e.results[0];
       const alternatives = Array.from({ length: result.length }, (_, index) => result[index].transcript);
-      if (practiceWord) handlePracticeResults(alternatives);
+      if (practiceTarget) handlePracticeResults(alternatives, practiceTarget);
       else handleSpeechResults(alternatives);
     };
-    recognition.onerror = () => setMessage("I didn’t hear that. Please try again!");
+    recognition.onerror = () => setMessage(practiceTarget ? "I didn’t hear that. Let’s try once more!" : "I didn’t hear that. Please try again!");
     recognition.onend = () => setListening(false);
     setListening(true);
     setSuggestions([]);
-    setMessage(practiceWord ? `Your turn—say “${practiceWord}”.` : "I’m listening…");
+    setMessage(practiceTarget ? `Your turn—say “${practiceTarget}”.` : "I’m listening…");
     recognition.start();
+  }
+
+  function listen() {
+    if (speaking || generating) return;
+    startListening(practiceWord ?? undefined);
   }
 
   return (
@@ -486,7 +498,7 @@ export default function Home() {
           <div className="letter-row" aria-label={`${selected.word} is spelled ${letters.join(" ")}`}>
             {letters.map((letter, index) => <button className={activeLetter === index ? "speaking" : ""} key={`${letter}-${index}`} onClick={() => speak(letter)} style={{ "--delay": `${index * 55}ms` } as React.CSSProperties}>{letter}</button>)}
           </div>
-          <p className="sentence"><Sparkles size={15} /> {selected.sentence}</p>
+          <p className={`sentence ${practiceWord ? "practice-prompt" : ""}`}><Sparkles size={15} /> {practiceWord ? `Now you try! Say “${selected.word}”.` : selected.sentence}</p>
         </section>
 
         <section className="word-picker">
