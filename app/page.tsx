@@ -565,14 +565,6 @@ export default function Home() {
         <div className="startup-loader" role="status" aria-label="Opening Say and See">
           <div className="startup-sky" aria-hidden="true"><i /><i /><i /><i /></div>
           <div className="startup-brand">
-            <div className="startup-icon-wrap" aria-hidden="true">
-              <span className="startup-orbit"><i /><i /><i /></span>
-              <div className="startup-icon">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/icons/app-logo-3d.png" alt="" />
-                <span className="startup-shine" />
-              </div>
-            </div>
             <div className="startup-name"><span>Say</span> <b>&amp;</b> <em>See</em></div>
             <p>Little words. Big imagination.</p>
             <div className="startup-progress" aria-hidden="true"><span /></div>
