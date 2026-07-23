@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Check, Images, MessageCircle, Mic, Sparkles, Volume2 } from "lucide-react";
+import { SENTENCE_CATEGORIES, SENTENCE_LESSONS, type SentenceLesson } from "@/lib/sentence-library";
+import { CONVERSATION_CATEGORIES, CONVERSATION_LESSONS, type ConversationLesson } from "@/lib/conversation-library";
+import { EVERYDAY_CATEGORIES, EVERYDAY_LESSONS, type EverydayLesson } from "@/lib/everyday-english-library";
+import styles from "./sentences.module.css";
+import advancedStyles from "./advanced-pages.module.css";
 
 type KidWord = { word: string; emoji: string; image: string; color: string; sentence: string; upgrading?: boolean };
 type WordSuggestion = KidWord & { score: number };
@@ -73,6 +78,7 @@ function similarity(left: string, right: string) {
 }
 
 export default function Home() {
+  const [activePage, setActivePage] = useState<"words" | "sentences" | "conversations" | "everyday">("words");
   const [showStartup, setShowStartup] = useState(true);
   const [selected, setSelected] = useState<KidWord>(WORDS[0]);
   const [galleryWords, setGalleryWords] = useState<KidWord[]>(WORDS);
@@ -89,6 +95,18 @@ export default function Home() {
   const [suggestions, setSuggestions] = useState<WordSuggestion[]>([]);
   const [practiceWord, setPracticeWord] = useState<string | null>(null);
   const [waitStage, setWaitStage] = useState(0);
+  const [selectedSentence, setSelectedSentence] = useState<SentenceLesson>(SENTENCE_LESSONS[0]);
+  const [sentenceCategory, setSentenceCategory] = useState(SENTENCE_CATEGORIES[0].name);
+  const [activeSentenceWord, setActiveSentenceWord] = useState<number | null>(null);
+  const [sentenceMessage, setSentenceMessage] = useState("Tap Listen, then say the sentence.");
+  const [conversationCategory, setConversationCategory] = useState<string>(CONVERSATION_CATEGORIES[0]);
+  const [selectedConversation, setSelectedConversation] = useState<ConversationLesson>(CONVERSATION_LESSONS[0]);
+  const [activeConversationLine, setActiveConversationLine] = useState<number | null>(null);
+  const [conversationMessage, setConversationMessage] = useState("Listen to the conversation, then practise the blue reply.");
+  const [everydayCategory, setEverydayCategory] = useState<string>(EVERYDAY_CATEGORIES[0]);
+  const [selectedEveryday, setSelectedEveryday] = useState<EverydayLesson>(EVERYDAY_LESSONS[0]);
+  const [activeEverydayWord, setActiveEverydayWord] = useState<number | null>(null);
+  const [everydayMessage, setEverydayMessage] = useState("Listen, understand and practise the useful phrase.");
   const upgradeTokenRef = useRef(0);
   const speechTokenRef = useRef(0);
   const galleryRef = useRef<HTMLDivElement>(null);
@@ -241,6 +259,24 @@ export default function Home() {
   }, [selected.word]);
 
   const letters = useMemo(() => selected.word.toUpperCase().split(""), [selected]);
+  const sentenceLessons = useMemo(
+    () => SENTENCE_LESSONS.filter((lesson) => lesson.category === sentenceCategory),
+    [sentenceCategory],
+  );
+  const sentenceWords = useMemo(() => selectedSentence.sentence.split(" "), [selectedSentence]);
+  const sentencePosition = Math.max(
+    0,
+    sentenceLessons.findIndex((lesson) => lesson.id === selectedSentence.id),
+  );
+  const conversationLessons = useMemo(
+    () => CONVERSATION_LESSONS.filter((lesson) => lesson.category === conversationCategory),
+    [conversationCategory],
+  );
+  const everydayLessons = useMemo(
+    () => EVERYDAY_LESSONS.filter((lesson) => lesson.category === everydayCategory),
+    [everydayCategory],
+  );
+  const everydayWords = useMemo(() => selectedEveryday.phrase.split(" "), [selectedEveryday]);
   const teacherStyle = TEACHER_STYLES[teacherProfile];
 
   function speak(text = selected.word, rate = 0.82) {
@@ -495,6 +531,295 @@ export default function Home() {
     window.setTimeout(() => speak("Nice try!", 0.82), 180);
   }
 
+  function chooseSentence(lesson: SentenceLesson) {
+    speechTokenRef.current += 1;
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+    setSelectedSentence(lesson);
+    setActiveSentenceWord(null);
+    setSpeaking(false);
+    setListening(false);
+    setSentenceMessage("Tap Listen, then say the sentence.");
+  }
+
+  function moveSentence(direction: -1 | 1) {
+    const nextIndex = (sentencePosition + direction + sentenceLessons.length) % sentenceLessons.length;
+    chooseSentence(sentenceLessons[nextIndex]);
+  }
+
+  function speakSentenceWord(word: string) {
+    if (!("speechSynthesis" in window)) return;
+    speechTokenRef.current += 1;
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(word.replace(/[.,!?]/g, ""));
+    if (teacherVoice) utterance.voice = teacherVoice;
+    utterance.lang = teacherVoice?.lang || "en-US";
+    utterance.rate = teacherStyle.rate;
+    utterance.pitch = teacherStyle.pitch;
+    utterance.onstart = () => setSpeaking(true);
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = utterance.onend;
+    speechSynthesis.speak(utterance);
+  }
+
+  function speakSentenceLesson() {
+    if (!("speechSynthesis" in window)) return;
+    const speechToken = ++speechTokenRef.current;
+    speechSynthesis.cancel();
+    setActiveSentenceWord(null);
+    setSpeaking(true);
+    setSentenceMessage("Listen to your teacher…");
+
+    const lessons = sentenceWords.map((word, index) => {
+      const utterance = new SpeechSynthesisUtterance(word.replace(/[.,!?]/g, ""));
+      if (teacherVoice) utterance.voice = teacherVoice;
+      utterance.lang = teacherVoice?.lang || "en-US";
+      utterance.rate = Math.max(0.62, teacherStyle.rate - 0.08);
+      utterance.pitch = teacherStyle.pitch;
+      utterance.onstart = () => {
+        if (speechTokenRef.current === speechToken) setActiveSentenceWord(index);
+      };
+      return utterance;
+    });
+
+    const complete = new SpeechSynthesisUtterance(selectedSentence.sentence);
+    if (teacherVoice) complete.voice = teacherVoice;
+    complete.lang = teacherVoice?.lang || "en-US";
+    complete.rate = teacherStyle.rate;
+    complete.pitch = teacherStyle.pitch;
+    complete.onstart = () => {
+      if (speechTokenRef.current === speechToken) setActiveSentenceWord(null);
+    };
+    complete.onend = () => {
+      if (speechTokenRef.current !== speechToken) return;
+      setSpeaking(false);
+      setSentenceMessage("Now you try—say the whole sentence.");
+      window.setTimeout(() => startSentenceListening(), 350);
+    };
+    complete.onerror = () => {
+      if (speechTokenRef.current !== speechToken) return;
+      setActiveSentenceWord(null);
+      setSpeaking(false);
+      setSentenceMessage("Tap the microphone when you are ready.");
+    };
+
+    lessons.forEach((utterance) => speechSynthesis.speak(utterance));
+    speechSynthesis.speak(complete);
+  }
+
+  function startSentenceListening() {
+    type RecognitionResult = { length: number; [index: number]: { transcript: string; confidence: number } };
+    type Recognition = { lang: string; interimResults: boolean; maxAlternatives: number; start: () => void; stop: () => void; onresult: (e: { results: { [index: number]: RecognitionResult } }) => void; onerror: () => void; onend: () => void };
+    const RecognitionClass = (window as typeof window & { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
+    if (!RecognitionClass) {
+      setSentenceMessage("Sentence practice works best in Chrome.");
+      return;
+    }
+
+    const recognition = new RecognitionClass();
+    recognition.lang = "en-GB";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 5;
+    let settled = false;
+    let answerTimer: number | undefined;
+
+    const release = (feedback: string) => {
+      setListening(false);
+      setSentenceMessage(feedback);
+    };
+
+    recognition.onresult = (event) => {
+      if (settled) return;
+      settled = true;
+      if (answerTimer) window.clearTimeout(answerTimer);
+      const result = event.results[0];
+      const alternatives = Array.from(
+        { length: result.length },
+        (_, index) => normalizeWords(result[index].transcript),
+      ).filter(Boolean);
+      const expected = normalizeWords(selectedSentence.sentence);
+      const bestScore = alternatives.length
+        ? Math.max(...alternatives.map((phrase) => similarity(phrase, expected)))
+        : 0;
+      if (bestScore >= 0.82) {
+        release("Excellent sentence! Tap Listen for another turn.");
+        window.setTimeout(() => speak("Excellent!", 0.82), 160);
+      } else if (bestScore >= 0.58) {
+        release("Good try! You are getting better.");
+        window.setTimeout(() => speak("Good try!", 0.82), 160);
+      } else {
+        release("Nice try! Listen once more when you are ready.");
+        window.setTimeout(() => speak("Nice try!", 0.82), 160);
+      }
+    };
+    recognition.onerror = () => {
+      if (answerTimer) window.clearTimeout(answerTimer);
+      if (settled) return;
+      settled = true;
+      release("Tap the microphone when you want to try again.");
+    };
+    recognition.onend = () => {
+      if (answerTimer) window.clearTimeout(answerTimer);
+      setListening(false);
+    };
+
+    setListening(true);
+    setSentenceMessage(`Your turn—say “${selectedSentence.sentence}”`);
+    playListeningChime();
+    window.setTimeout(() => {
+      try {
+        recognition.start();
+        answerTimer = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          release("Tap the microphone when you want to try again.");
+          try { recognition.stop(); } catch { /* The microphone has already closed. */ }
+        }, 8_000);
+      } catch {
+        release("Tap the microphone when you are ready.");
+      }
+    }, 230);
+  }
+
+  function startAdvancedPractice(target: string, setFeedback: (message: string) => void) {
+    type RecognitionResult = { length: number; [index: number]: { transcript: string; confidence: number } };
+    type Recognition = { lang: string; interimResults: boolean; maxAlternatives: number; start: () => void; stop: () => void; onresult: (e: { results: { [index: number]: RecognitionResult } }) => void; onerror: () => void; onend: () => void };
+    const RecognitionClass = (window as typeof window & { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
+    if (!RecognitionClass) {
+      setFeedback("Speaking practice works best in Chrome.");
+      return;
+    }
+    const recognition = new RecognitionClass();
+    recognition.lang = "en-GB";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 5;
+    let settled = false;
+    let answerTimer: number | undefined;
+    const finish = (feedback: string) => {
+      setListening(false);
+      setFeedback(feedback);
+    };
+    recognition.onresult = (event) => {
+      if (settled) return;
+      settled = true;
+      if (answerTimer) window.clearTimeout(answerTimer);
+      const result = event.results[0];
+      const alternatives = Array.from({ length: result.length }, (_, index) =>
+        normalizeWords(result[index].transcript),
+      ).filter(Boolean);
+      const expected = normalizeWords(target);
+      const score = alternatives.length
+        ? Math.max(...alternatives.map((phrase) => similarity(phrase, expected)))
+        : 0;
+      const feedback = score >= 0.8
+        ? "Excellent! That sounded clear and confident."
+        : score >= 0.55
+          ? "Good try! Your sentence is getting clearer."
+          : "Nice try! Listen once more and try again later.";
+      finish(feedback);
+      window.setTimeout(() => speak(feedback.split("!")[0] + "!", 0.82), 160);
+    };
+    recognition.onerror = () => {
+      if (answerTimer) window.clearTimeout(answerTimer);
+      if (settled) return;
+      settled = true;
+      finish("No answer heard. Tap the microphone when you are ready.");
+    };
+    recognition.onend = () => {
+      if (answerTimer) window.clearTimeout(answerTimer);
+      setListening(false);
+    };
+    setListening(true);
+    setFeedback(`Your turn—say “${target}”`);
+    playListeningChime();
+    window.setTimeout(() => {
+      try {
+        recognition.start();
+        answerTimer = window.setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          finish("Tap the microphone when you want to practise.");
+          try { recognition.stop(); } catch { /* The microphone has already closed. */ }
+        }, 10_000);
+      } catch {
+        finish("Tap the microphone when you are ready.");
+      }
+    }, 230);
+  }
+
+  function playConversation() {
+    if (!("speechSynthesis" in window)) return;
+    const token = ++speechTokenRef.current;
+    speechSynthesis.cancel();
+    setSpeaking(true);
+    setActiveConversationLine(null);
+    setConversationMessage("Listen to both speakers…");
+    selectedConversation.lines.forEach((line, index) => {
+      const utterance = new SpeechSynthesisUtterance(line.text);
+      if (teacherVoice) utterance.voice = teacherVoice;
+      utterance.lang = teacherVoice?.lang || "en-US";
+      utterance.rate = index % 2 ? Math.max(.65, teacherStyle.rate - .05) : teacherStyle.rate;
+      utterance.pitch = index % 2 ? Math.max(.88, teacherStyle.pitch - .14) : teacherStyle.pitch;
+      utterance.onstart = () => {
+        if (speechTokenRef.current === token) setActiveConversationLine(index);
+      };
+      if (index === selectedConversation.lines.length - 1) {
+        utterance.onend = () => {
+          if (speechTokenRef.current !== token) return;
+          setActiveConversationLine(null);
+          setSpeaking(false);
+          setConversationMessage("Now you try the blue reply.");
+          window.setTimeout(() => {
+            const target = selectedConversation.lines.find((item) => item.speaker === "B")?.text
+              ?? selectedConversation.lines[1].text;
+            startAdvancedPractice(target, setConversationMessage);
+          }, 350);
+        };
+        utterance.onerror = () => {
+          setSpeaking(false);
+          setActiveConversationLine(null);
+        };
+      }
+      speechSynthesis.speak(utterance);
+    });
+  }
+
+  function playEverydayLesson() {
+    if (!("speechSynthesis" in window)) return;
+    const token = ++speechTokenRef.current;
+    speechSynthesis.cancel();
+    setSpeaking(true);
+    setActiveEverydayWord(null);
+    setEverydayMessage("Listen to each word…");
+    everydayWords.forEach((word, index) => {
+      const utterance = new SpeechSynthesisUtterance(word.replace(/[.,!?]/g, ""));
+      if (teacherVoice) utterance.voice = teacherVoice;
+      utterance.lang = teacherVoice?.lang || "en-US";
+      utterance.rate = Math.max(.64, teacherStyle.rate - .1);
+      utterance.pitch = teacherStyle.pitch;
+      utterance.onstart = () => {
+        if (speechTokenRef.current === token) setActiveEverydayWord(index);
+      };
+      speechSynthesis.speak(utterance);
+    });
+    const complete = new SpeechSynthesisUtterance(selectedEveryday.phrase);
+    if (teacherVoice) complete.voice = teacherVoice;
+    complete.lang = teacherVoice?.lang || "en-US";
+    complete.rate = teacherStyle.rate;
+    complete.pitch = teacherStyle.pitch;
+    complete.onstart = () => setActiveEverydayWord(null);
+    complete.onend = () => {
+      if (speechTokenRef.current !== token) return;
+      setSpeaking(false);
+      setEverydayMessage("Now say the complete phrase.");
+      window.setTimeout(
+        () => startAdvancedPractice(selectedEveryday.phrase, setEverydayMessage),
+        350,
+      );
+    };
+    complete.onerror = () => setSpeaking(false);
+    speechSynthesis.speak(complete);
+  }
+
   function startListening(practiceTarget?: string) {
     type RecognitionResult = { length: number; [index: number]: { transcript: string; confidence: number } };
     type Recognition = { lang: string; interimResults: boolean; maxAlternatives: number; start: () => void; stop: () => void; onresult: (e: { results: { [index: number]: RecognitionResult } }) => void; onerror: () => void; onend: () => void };
@@ -556,6 +881,20 @@ export default function Home() {
 
   function listen() {
     if (speaking || generating) return;
+    if (activePage === "sentences") {
+      startSentenceListening();
+      return;
+    }
+    if (activePage === "conversations") {
+      const target = selectedConversation.lines.find((line) => line.speaker === "B")?.text
+        ?? selectedConversation.lines[1].text;
+      startAdvancedPractice(target, setConversationMessage);
+      return;
+    }
+    if (activePage === "everyday") {
+      startAdvancedPractice(selectedEveryday.phrase, setEverydayMessage);
+      return;
+    }
     startListening(practiceWord ?? undefined);
   }
 
@@ -596,6 +935,8 @@ export default function Home() {
           <div className="brand"><h1><span>Say</span> <b>&amp;</b> <em>See</em></h1><p>Little words. Big imagination.</p></div>
         </header>
 
+        {activePage === "words" ? (
+          <>
         <section className="discovery-card" aria-live="polite">
           <div className="picture-frame" key={selected.word}>
             {/* Blob URLs are already optimized WebP files and are intentionally rendered directly. */}
@@ -650,14 +991,162 @@ export default function Home() {
             ))}
           </div>
         </section>
+          </>
+        ) : activePage === "sentences" ? (
+          <section className={styles.page} aria-label="First Sentences">
+            <div className={styles.hero}>
+              <div>
+                <p>Page 2 · Speak with confidence</p>
+                <h2>First Sentences</h2>
+              </div>
+              <span className={styles.progress}>{SENTENCE_LESSONS.indexOf(selectedSentence) + 1}/100</span>
+            </div>
+
+            <div className={styles.categories} aria-label="Sentence categories">
+              {SENTENCE_CATEGORIES.map((category) => (
+                <button
+                  type="button"
+                  key={category.name}
+                  className={sentenceCategory === category.name ? styles.active : ""}
+                  onClick={() => {
+                    const firstLesson = SENTENCE_LESSONS.find((lesson) => lesson.category === category.name);
+                    setSentenceCategory(category.name);
+                    if (firstLesson) chooseSentence(firstLesson);
+                  }}
+                >
+                  <span aria-hidden="true">{category.emoji}</span>
+                  {category.name}
+                </button>
+              ))}
+            </div>
+
+            <article className={styles.card} aria-live="polite">
+              <div className={styles.scene} key={selectedSentence.id}>
+                <span aria-hidden="true">{selectedSentence.scene}</span>
+                <small>{selectedSentence.categoryEmoji} {selectedSentence.category}</small>
+              </div>
+
+              <div className={styles.sentence} aria-label={selectedSentence.sentence}>
+                {sentenceWords.map((word, index) => (
+                  <button
+                    type="button"
+                    key={`${selectedSentence.id}-${index}`}
+                    className={activeSentenceWord === index ? styles.spoken : ""}
+                    onClick={() => speakSentenceWord(word)}
+                    aria-label={`Hear ${word.replace(/[.,!?]/g, "")}`}
+                  >
+                    {word}
+                  </button>
+                ))}
+              </div>
+
+              <p className={styles.hint}>{selectedSentence.hint}</p>
+
+              <div className={styles.controls}>
+                <button type="button" onClick={() => moveSentence(-1)} aria-label="Previous sentence">←</button>
+                <button type="button" className={styles.listen} onClick={speakSentenceLesson}>
+                  <Volume2 size={18} /> Listen &amp; practise
+                </button>
+                <button type="button" onClick={() => moveSentence(1)} aria-label="Next sentence">→</button>
+              </div>
+            </article>
+
+            <div className={styles.lessonList} aria-label={`${sentenceCategory} lessons`}>
+              {sentenceLessons.map((lesson, index) => (
+                <button
+                  type="button"
+                  key={lesson.id}
+                  className={lesson.id === selectedSentence.id ? styles.active : ""}
+                  onClick={() => chooseSentence(lesson)}
+                >
+                  <span aria-hidden="true">{lesson.scene}</span>
+                  <b>Sentence {index + 1}</b>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : activePage === "conversations" ? (
+          <section className={advancedStyles.page} aria-label="English Conversations">
+            <div className={`${advancedStyles.hero} ${advancedStyles.conversationHero}`}>
+              <div><p>Page 3 · Real speaking practice</p><h2>Conversations</h2></div>
+              <span>{CONVERSATION_LESSONS.indexOf(selectedConversation) + 1}/{CONVERSATION_LESSONS.length}</span>
+            </div>
+            <div className={advancedStyles.categories}>
+              {CONVERSATION_CATEGORIES.map((category) => (
+                <button type="button" key={category} className={conversationCategory === category ? advancedStyles.active : ""} onClick={() => {
+                  const lesson = CONVERSATION_LESSONS.find((item) => item.category === category);
+                  setConversationCategory(category);
+                  if (lesson) { setSelectedConversation(lesson); setConversationMessage("Listen to the conversation, then practise the blue reply."); }
+                }}>{category}</button>
+              ))}
+            </div>
+            <article className={advancedStyles.card}>
+              <div className={advancedStyles.title}>
+                <span aria-hidden="true">{selectedConversation.scene}</span>
+                <div><h3>{selectedConversation.title}</h3><p>{selectedConversation.situation}</p></div>
+              </div>
+              <div className={advancedStyles.dialogue}>
+                {selectedConversation.lines.map((line, index) => (
+                  <div key={`${selectedConversation.id}-${index}`} className={`${line.speaker === "B" ? advancedStyles.reply : ""} ${activeConversationLine === index ? advancedStyles.speaking : ""}`}>
+                    <b>{line.speaker}</b><p>{line.text}</p>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className={advancedStyles.primary} onClick={playConversation}><Volume2 size={18} /> Play conversation &amp; practise</button>
+            </article>
+            <div className={advancedStyles.lessonList}>
+              {conversationLessons.map((lesson) => (
+                <button type="button" key={lesson.id} className={lesson.id === selectedConversation.id ? advancedStyles.active : ""} onClick={() => { setSelectedConversation(lesson); setConversationMessage("Listen to the conversation, then practise the blue reply."); }}>
+                  <span>{lesson.scene}</span><b>{lesson.title}</b>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <section className={advancedStyles.page} aria-label="Everyday English">
+            <div className={`${advancedStyles.hero} ${advancedStyles.everydayHero}`}>
+              <div><p>Page 4 · Useful English for life</p><h2>Everyday English</h2></div>
+              <span>{EVERYDAY_LESSONS.indexOf(selectedEveryday) + 1}/{EVERYDAY_LESSONS.length}</span>
+            </div>
+            <div className={advancedStyles.categories}>
+              {EVERYDAY_CATEGORIES.map((category) => (
+                <button type="button" key={category} className={everydayCategory === category ? advancedStyles.active : ""} onClick={() => {
+                  const lesson = EVERYDAY_LESSONS.find((item) => item.category === category);
+                  setEverydayCategory(category);
+                  if (lesson) { setSelectedEveryday(lesson); setEverydayMessage("Listen, understand and practise the useful phrase."); }
+                }}>{category}</button>
+              ))}
+            </div>
+            <article className={advancedStyles.card}>
+              <div className={advancedStyles.title}>
+                <span aria-hidden="true">{selectedEveryday.scene}</span>
+                <div><h3>{selectedEveryday.title}</h3><p>{selectedEveryday.meaning}</p></div>
+              </div>
+              <div className={advancedStyles.phrase}>
+                {everydayWords.map((word, index) => (
+                  <button type="button" key={`${selectedEveryday.id}-${index}`} className={activeEverydayWord === index ? advancedStyles.speaking : ""} onClick={() => speakSentenceWord(word)}>{word}</button>
+                ))}
+              </div>
+              <div className={advancedStyles.example}><Sparkles size={15} /><span><b>Example</b>{selectedEveryday.example}</span></div>
+              <button type="button" className={advancedStyles.primary} onClick={playEverydayLesson}><Volume2 size={18} /> Listen &amp; practise</button>
+            </article>
+            <div className={advancedStyles.lessonList}>
+              {everydayLessons.map((lesson) => (
+                <button type="button" key={lesson.id} className={lesson.id === selectedEveryday.id ? advancedStyles.active : ""} onClick={() => { setSelectedEveryday(lesson); setEverydayMessage("Listen, understand and practise the useful phrase."); }}>
+                  <span>{lesson.scene}</span><b>{lesson.title}</b>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="voice-zone" aria-label="Learning navigation">
-          <button className="dock-item active" type="button" aria-label="Picture words"><Images size={20} /></button>
-          <button className="dock-item" type="button" aria-label="Stories coming soon" disabled><BookOpen size={20} /></button>
+          <button className={`dock-item dock-words ${activePage === "words" ? "active" : ""}`} type="button" aria-label="Picture words" onClick={() => { setActivePage("words"); setListening(false); setSpeaking(false); speechTokenRef.current += 1; if ("speechSynthesis" in window) speechSynthesis.cancel(); }}><Images size={21} strokeWidth={2.4} /></button>
+          <button className={`dock-item dock-sentences ${activePage === "sentences" ? "active" : ""}`} type="button" aria-label="First sentences" onClick={() => { setActivePage("sentences"); setSuggestions([]); setListening(false); setSpeaking(false); speechTokenRef.current += 1; if ("speechSynthesis" in window) speechSynthesis.cancel(); }}><BookOpen size={21} strokeWidth={2.4} /></button>
           <div className="dock-center">
-          {!listening && !generating && !speaking && !suggestions.length && (
+          {!listening && !generating && !speaking && (activePage !== "words" || !suggestions.length) && (
             <div className="mic-halo">
-              <button className="mic-button" onClick={listen} aria-label={practiceWord ? `Repeat ${practiceWord}` : "Say a word"}><Mic size={37} strokeWidth={2.4} /></button>
+              <button className="mic-button" onClick={listen} aria-label={activePage === "sentences" ? `Practise ${selectedSentence.sentence}` : activePage === "conversations" ? "Practise the conversation reply" : activePage === "everyday" ? `Practise ${selectedEveryday.phrase}` : practiceWord ? `Repeat ${practiceWord}` : "Say a word"}><Mic size={37} strokeWidth={2.4} /></button>
             </div>
           )}
           {listening && <div className="listening-bubbles" aria-label="Listening"><i /><i /><i /></div>}
@@ -668,9 +1157,9 @@ export default function Home() {
             </div>
           )}
           </div>
-          <button className="dock-item" type="button" aria-label="Conversations coming soon" disabled><MessageCircle size={20} /></button>
-          <button className="dock-item" type="button" aria-label="More lessons coming soon" disabled><Sparkles size={20} /></button>
-          {!!suggestions.length && (
+          <button className={`dock-item dock-conversations ${activePage === "conversations" ? "active" : ""}`} type="button" aria-label="English conversations" onClick={() => { setActivePage("conversations"); setSuggestions([]); setListening(false); setSpeaking(false); speechTokenRef.current += 1; if ("speechSynthesis" in window) speechSynthesis.cancel(); }}><MessageCircle size={21} strokeWidth={2.4} /></button>
+          <button className={`dock-item dock-everyday ${activePage === "everyday" ? "active" : ""}`} type="button" aria-label="Everyday English" onClick={() => { setActivePage("everyday"); setSuggestions([]); setListening(false); setSpeaking(false); speechTokenRef.current += 1; if ("speechSynthesis" in window) speechSynthesis.cancel(); }}><Sparkles size={21} strokeWidth={2.4} /></button>
+          {activePage === "words" && !!suggestions.length && (
             <div className="speech-suggestions" role="group" aria-label="Did you mean">
               {suggestions.map((item) => (
                 <button key={item.word} onClick={() => chooseSuggestion(item)}>
@@ -685,7 +1174,7 @@ export default function Home() {
               <button className="try-again" onClick={() => { setSuggestions([]); setMessage("Tap and say the word again"); }}>None of these</button>
             </div>
           )}
-          <p className="dock-message">{message}</p>
+          <p className="dock-message">{activePage === "sentences" ? sentenceMessage : activePage === "conversations" ? conversationMessage : activePage === "everyday" ? everydayMessage : message}</p>
         </section>
 
       </div>
