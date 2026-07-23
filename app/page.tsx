@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Check, Images, MessageCircle, Mic, Sparkles, Volume2 } from "lucide-react";
+import { BookOpen, Check, Download, Images, MessageCircle, Mic, Share2, Sparkles, Volume2, X } from "lucide-react";
 import { SENTENCE_CATEGORIES, SENTENCE_LESSONS, type SentenceLesson } from "@/lib/sentence-library";
 import { CONVERSATION_CATEGORIES, CONVERSATION_LESSONS, type ConversationLesson } from "@/lib/conversation-library";
 import { EVERYDAY_CATEGORIES, EVERYDAY_LESSONS, type EverydayLesson } from "@/lib/everyday-english-library";
@@ -11,6 +11,10 @@ import advancedStyles from "./advanced-pages.module.css";
 type KidWord = { word: string; emoji: string; image: string; color: string; sentence: string; upgrading?: boolean };
 type WordSuggestion = KidWord & { score: number };
 type CatalogItem = { word: string; searchTerms?: string[] };
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
 const WORDS: KidWord[] = [
   { word: "Rabbit", emoji: "🐇", image: "/pictures/rabbit.webp", color: "#f8d9e4", sentence: "A rabbit hops in the meadow." },
   { word: "Lion", emoji: "🦁", image: "/pictures/lion.webp", color: "#ffe5a7", sentence: "A lion has a big, fluffy mane." },
@@ -107,6 +111,9 @@ export default function Home() {
   const [selectedEveryday, setSelectedEveryday] = useState<EverydayLesson>(EVERYDAY_LESSONS[0]);
   const [activeEverydayWord, setActiveEverydayWord] = useState<number | null>(null);
   const [everydayMessage, setEverydayMessage] = useState("Listen, understand and practise the useful phrase.");
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [showInstallCard, setShowInstallCard] = useState(false);
+  const [showIosInstallHelp, setShowIosInstallHelp] = useState(false);
   const upgradeTokenRef = useRef(0);
   const speechTokenRef = useRef(0);
   const galleryRef = useRef<HTMLDivElement>(null);
@@ -240,6 +247,60 @@ export default function Home() {
       audioContextRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (standalone) return;
+
+    const dismissedAt = Number(localStorage.getItem("say-see-install-dismissed") || 0);
+    const recentlyDismissed = Date.now() - dismissedAt < 7 * 24 * 60 * 60 * 1000;
+    if (recentlyDismissed) return;
+
+    const isMobile = window.matchMedia("(max-width: 760px)").matches;
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const timer = window.setTimeout(() => {
+      if (isMobile && isIos) setShowInstallCard(true);
+    }, 8_000);
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as InstallPromptEvent);
+      window.setTimeout(() => setShowInstallCard(true), 4_000);
+    };
+    const handleInstalled = () => {
+      setShowInstallCard(false);
+      setInstallPrompt(null);
+      setShowIosInstallHelp(false);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+    };
+  }, []);
+
+  function dismissInstallCard() {
+    localStorage.setItem("say-see-install-dismissed", String(Date.now()));
+    setShowInstallCard(false);
+    setShowIosInstallHelp(false);
+  }
+
+  async function installApp() {
+    if (!installPrompt) {
+      setShowIosInstallHelp(true);
+      return;
+    }
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === "accepted") setShowInstallCard(false);
+    else localStorage.setItem("say-see-install-dismissed", String(Date.now()));
+    setInstallPrompt(null);
+  }
 
   useEffect(() => {
     if (!generating) return;
@@ -928,6 +989,25 @@ export default function Home() {
             <small>Please wait—your picture will pop up soon ✨</small>
           </div>
         </div>
+      )}
+      {showInstallCard && !generating && !showStartup && (
+        <aside className="install-card" aria-label="Install Say and See">
+          <button className="install-close" type="button" onClick={dismissInstallCard} aria-label="Maybe later">
+            <X size={16} strokeWidth={2.5} />
+          </button>
+          <div className="install-badge" aria-hidden="true"><Download size={22} strokeWidth={2.7} /></div>
+          <div className="install-copy">
+            <strong>Keep Say &amp; See with you!</strong>
+            {showIosInstallHelp ? (
+              <p><Share2 size={14} /> Tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
+            ) : (
+              <p>Open it faster from your home screen.</p>
+            )}
+          </div>
+          {!showIosInstallHelp && (
+            <button className="install-action" type="button" onClick={installApp}>Install</button>
+          )}
+        </aside>
       )}
       <main className="page-wrap" aria-hidden={generating || undefined}>
       <div className="app-shell">
