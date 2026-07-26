@@ -1,3 +1,5 @@
+import { EXPANDED_SENTENCE_CATEGORIES, EXPANDED_SENTENCES } from "@/lib/expanded-learning-content";
+
 export type SentenceLesson = {
   id: string;
   category: string;
@@ -170,12 +172,12 @@ const groups = [
   },
 ] as const;
 
-export const SENTENCE_CATEGORIES = groups.map((group) => ({
-  name: group.category,
-  emoji: group.emoji,
-}));
+export const SENTENCE_CATEGORIES: Array<{ name: string; emoji: string }> = [
+  ...groups.map((group) => ({ name: group.category, emoji: group.emoji })),
+  ...EXPANDED_SENTENCE_CATEGORIES.map((name) => ({ name, emoji: "" })),
+];
 
-export const SENTENCE_LESSONS: SentenceLesson[] = groups.flatMap((group) =>
+const CORE_SENTENCE_LESSONS: SentenceLesson[] = groups.flatMap((group) =>
   group.lessons.map(([sentence, scene, hint], index) => ({
     id: `${group.category.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}-${index + 1}`,
     category: group.category,
@@ -184,4 +186,8 @@ export const SENTENCE_LESSONS: SentenceLesson[] = groups.flatMap((group) =>
     scene,
     hint,
   })),
+);
+
+export const SENTENCE_LESSONS: SentenceLesson[] = CORE_SENTENCE_LESSONS.concat(
+  EXPANDED_SENTENCES.map((lesson) => ({ ...lesson, categoryEmoji: "", scene: "" })),
 );

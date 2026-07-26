@@ -39,7 +39,7 @@ const raw: Array<[string, string, string, string, string, string, string]> = [
   ["Emergencies", "🚑", "Calling an Adult", "Responding to an unsafe situation", "Please stop. This is not safe.", "Let us call an adult.", "Yes, we should get help now."],
 ];
 
-export const CONVERSATION_LESSONS: ConversationLesson[] = raw.map(
+const CORE_CONVERSATION_LESSONS: ConversationLesson[] = raw.map(
   ([category, scene, title, situation, first, second, third], index) => ({
     id: `conversation-${index + 1}`,
     category,
@@ -53,3 +53,8 @@ export const CONVERSATION_LESSONS: ConversationLesson[] = raw.map(
     ],
   }),
 );
+
+export const CONVERSATION_LESSONS: ConversationLesson[] = CORE_CONVERSATION_LESSONS.concat(
+  EXPANDED_CONVERSATIONS.map((lesson) => ({ ...lesson, scene: "" })),
+);
+import { EXPANDED_CONVERSATIONS } from "@/lib/expanded-learning-content";

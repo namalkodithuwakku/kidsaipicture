@@ -23,6 +23,21 @@
     { "path": "/api/cron/build-picture/21", "schedule": "15 20 * * *" },
     { "path": "/api/cron/build-picture/22", "schedule": "15 21 * * *" },
     { "path": "/api/cron/build-picture/23", "schedule": "15 22 * * *" },
-    { "path": "/api/cron/build-picture/24", "schedule": "15 23 * * *" }
+    { "path": "/api/cron/build-picture/24", "schedule": "15 23 * * *" },
+    { "path": "/api/cron/build-lesson-image/1", "schedule": "35 0 * * *" },
+    { "path": "/api/cron/build-lesson-image/2", "schedule": "11 2 * * *" },
+    { "path": "/api/cron/build-lesson-image/3", "schedule": "47 3 * * *" },
+    { "path": "/api/cron/build-lesson-image/4", "schedule": "23 5 * * *" },
+    { "path": "/api/cron/build-lesson-image/5", "schedule": "59 6 * * *" },
+    { "path": "/api/cron/build-lesson-image/6", "schedule": "35 8 * * *" },
+    { "path": "/api/cron/build-lesson-image/7", "schedule": "11 10 * * *" },
+    { "path": "/api/cron/build-lesson-image/8", "schedule": "47 11 * * *" },
+    { "path": "/api/cron/build-lesson-image/9", "schedule": "23 13 * * *" },
+    { "path": "/api/cron/build-lesson-image/10", "schedule": "59 14 * * *" },
+    { "path": "/api/cron/build-lesson-image/11", "schedule": "35 16 * * *" },
+    { "path": "/api/cron/build-lesson-image/12", "schedule": "11 18 * * *" },
+    { "path": "/api/cron/build-lesson-image/13", "schedule": "47 19 * * *" },
+    { "path": "/api/cron/build-lesson-image/14", "schedule": "23 21 * * *" },
+    { "path": "/api/cron/build-lesson-image/15", "schedule": "59 22 * * *" }
   ]
 }

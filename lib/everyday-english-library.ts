@@ -48,7 +48,7 @@ const raw: Array<[string, string, string, string, string, string]> = [
   ["Problems", "🆘", "Getting Urgent Help", "Please call someone who can help.", "Request help from the right person.", "This is urgent. Please call someone who can help."],
 ];
 
-export const EVERYDAY_LESSONS: EverydayLesson[] = raw.map(
+const CORE_EVERYDAY_LESSONS: EverydayLesson[] = raw.map(
   ([category, scene, title, phrase, meaning, example], index) => ({
     id: `everyday-${index + 1}`,
     category,
@@ -59,3 +59,8 @@ export const EVERYDAY_LESSONS: EverydayLesson[] = raw.map(
     example,
   }),
 );
+
+export const EVERYDAY_LESSONS: EverydayLesson[] = CORE_EVERYDAY_LESSONS.concat(
+  EXPANDED_EVERYDAY.map((lesson) => ({ ...lesson, scene: "" })),
+);
+import { EXPANDED_EVERYDAY } from "@/lib/expanded-learning-content";

@@ -15,6 +15,8 @@ type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
+type LessonImagePage = "sentences" | "conversations" | "everyday";
+type LessonImageMaps = Record<LessonImagePage, Record<string, string>>;
 const WORDS: KidWord[] = [
   { word: "Rabbit", emoji: "🐇", image: "/pictures/rabbit.webp", color: "#f8d9e4", sentence: "A rabbit hops in the meadow." },
   { word: "Lion", emoji: "🦁", image: "/pictures/lion.webp", color: "#ffe5a7", sentence: "A lion has a big, fluffy mane." },
@@ -114,6 +116,11 @@ export default function Home() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [showInstallCard, setShowInstallCard] = useState(false);
   const [showIosInstallHelp, setShowIosInstallHelp] = useState(false);
+  const [lessonImages, setLessonImages] = useState<LessonImageMaps>({
+    sentences: {},
+    conversations: {},
+    everyday: {},
+  });
   const upgradeTokenRef = useRef(0);
   const speechTokenRef = useRef(0);
   const galleryRef = useRef<HTMLDivElement>(null);
@@ -247,6 +254,28 @@ export default function Home() {
       audioContextRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (activePage === "words") return;
+    const page: LessonImagePage = activePage;
+    let cancelled = false;
+    const loadImages = () => {
+      fetch(`/api/lesson-images?page=${page}`, { cache: "no-store" })
+        .then((response) => response.ok ? response.json() : Promise.reject())
+        .then((result: { images?: Record<string, string> }) => {
+          if (!cancelled) {
+            setLessonImages((current) => ({ ...current, [page]: result.images ?? {} }));
+          }
+        })
+        .catch(() => undefined);
+    };
+    loadImages();
+    const timer = window.setInterval(loadImages, 3_600_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activePage]);
 
   useEffect(() => {
     const standalone =
@@ -1094,7 +1123,6 @@ export default function Home() {
                     if (firstLesson) chooseSentence(firstLesson);
                   }}
                 >
-                  <span aria-hidden="true">{category.emoji}</span>
                   {category.name}
                 </button>
               ))}
@@ -1102,8 +1130,16 @@ export default function Home() {
 
             <article className={styles.card} aria-live="polite">
               <div className={styles.scene} key={selectedSentence.id}>
-                <span aria-hidden="true">{selectedSentence.scene}</span>
-                <small>{selectedSentence.categoryEmoji} {selectedSentence.category}</small>
+                {lessonImages.sentences[selectedSentence.id] ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={lessonImages.sentences[selectedSentence.id]} alt={`Illustration for ${selectedSentence.sentence}`} />
+                ) : (
+                  <div className={styles.imagePending} role="status">
+                    <i /><i /><i />
+                    <b>Illustration is being painted</b>
+                  </div>
+                )}
+                <small>{selectedSentence.category}</small>
               </div>
 
               <div className={styles.sentence} aria-label={selectedSentence.sentence}>
@@ -1139,7 +1175,10 @@ export default function Home() {
                   className={lesson.id === selectedSentence.id ? styles.active : ""}
                   onClick={() => chooseSentence(lesson)}
                 >
-                  <span aria-hidden="true">{lesson.scene}</span>
+                  {lessonImages.sentences[lesson.id] ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={lessonImages.sentences[lesson.id]} alt="" loading="lazy" />
+                  ) : <i className={styles.thumbnailPending} aria-hidden="true" />}
                   <b>Sentence {index + 1}</b>
                 </button>
               ))}
@@ -1161,8 +1200,17 @@ export default function Home() {
               ))}
             </div>
             <article className={advancedStyles.card}>
+              <div className={advancedStyles.artwork}>
+                {lessonImages.conversations[selectedConversation.id] ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={lessonImages.conversations[selectedConversation.id]} alt={`Illustration for ${selectedConversation.title}`} />
+                ) : (
+                  <div className={advancedStyles.imagePending} role="status">
+                    <i /><i /><i /><b>Scene is being illustrated</b>
+                  </div>
+                )}
+              </div>
               <div className={advancedStyles.title}>
-                <span aria-hidden="true">{selectedConversation.scene}</span>
                 <div><h3>{selectedConversation.title}</h3><p>{selectedConversation.situation}</p></div>
               </div>
               <div className={advancedStyles.dialogue}>
@@ -1177,7 +1225,11 @@ export default function Home() {
             <div className={advancedStyles.lessonList}>
               {conversationLessons.map((lesson) => (
                 <button type="button" key={lesson.id} className={lesson.id === selectedConversation.id ? advancedStyles.active : ""} onClick={() => { setSelectedConversation(lesson); setConversationMessage("Listen to the conversation, then practise the blue reply."); }}>
-                  <span>{lesson.scene}</span><b>{lesson.title}</b>
+                  {lessonImages.conversations[lesson.id] ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={lessonImages.conversations[lesson.id]} alt="" loading="lazy" />
+                  ) : <i className={advancedStyles.thumbnailPending} aria-hidden="true" />}
+                  <b>{lesson.title}</b>
                 </button>
               ))}
             </div>
@@ -1198,8 +1250,17 @@ export default function Home() {
               ))}
             </div>
             <article className={advancedStyles.card}>
+              <div className={advancedStyles.artwork}>
+                {lessonImages.everyday[selectedEveryday.id] ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={lessonImages.everyday[selectedEveryday.id]} alt={`Illustration for ${selectedEveryday.title}`} />
+                ) : (
+                  <div className={advancedStyles.imagePending} role="status">
+                    <i /><i /><i /><b>Scene is being illustrated</b>
+                  </div>
+                )}
+              </div>
               <div className={advancedStyles.title}>
-                <span aria-hidden="true">{selectedEveryday.scene}</span>
                 <div><h3>{selectedEveryday.title}</h3><p>{selectedEveryday.meaning}</p></div>
               </div>
               <div className={advancedStyles.phrase}>
@@ -1213,7 +1274,11 @@ export default function Home() {
             <div className={advancedStyles.lessonList}>
               {everydayLessons.map((lesson) => (
                 <button type="button" key={lesson.id} className={lesson.id === selectedEveryday.id ? advancedStyles.active : ""} onClick={() => { setSelectedEveryday(lesson); setEverydayMessage("Listen, understand and practise the useful phrase."); }}>
-                  <span>{lesson.scene}</span><b>{lesson.title}</b>
+                  {lessonImages.everyday[lesson.id] ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={lessonImages.everyday[lesson.id]} alt="" loading="lazy" />
+                  ) : <i className={advancedStyles.thumbnailPending} aria-hidden="true" />}
+                  <b>{lesson.title}</b>
                 </button>
               ))}
             </div>
