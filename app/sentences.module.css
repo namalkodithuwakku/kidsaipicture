@@ -508,13 +508,15 @@
  */
 @media (max-width: 620px) and (min-height: 651px) and (max-height: 880px) {
   .page {
-    gap: 6px;
-    padding-bottom: 42px;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    gap: 7px;
+    padding-bottom: 34px;
   }
 
   .hero {
-    min-height: 58px;
-    padding: 8px 12px;
+    min-height: 60px;
+    padding: 9px 13px;
     border-radius: 20px;
   }
 
@@ -523,12 +525,13 @@
   }
 
   .hero h2 {
-    font-size: 20px;
+    font-size: 21px;
+    line-height: 1;
   }
 
   .progress {
-    width: 44px;
-    height: 44px;
+    width: 46px;
+    height: 46px;
     border-width: 3px;
     border-radius: 15px;
     font-size: 11px;
@@ -536,38 +539,64 @@
 
   .categories {
     gap: 6px;
-    padding-bottom: 3px;
+    min-height: 37px;
+    padding: 1px 1px 4px;
   }
 
   .categories button {
-    padding: 6px 9px;
+    min-height: 32px;
+    justify-content: center;
+    padding: 5px 11px;
     font-size: 8px;
+    line-height: 1.1;
+    text-align: center;
   }
 
   .card {
-    padding: 9px;
+    gap: 6px;
+    overflow: hidden;
+    padding: 10px;
     border-radius: 24px;
   }
 
-  .scene,
+  .scene {
+    min-height: 0;
+    height: clamp(135px, 22dvh, 185px);
+    flex: 1 1 auto;
+    border-radius: 20px;
+  }
+
   .scene > img {
-    min-height: 116px;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    object-fit: contain;
+    object-position: center;
+    background: linear-gradient(145deg, #f4eaff, #fff7df 53%, #e3f4ff);
   }
 
   .sentence {
     gap: 5px;
-    margin: 8px 0 5px;
+    flex: 0 0 auto;
+    margin: 3px 0 2px;
   }
 
   .sentence button {
-    padding: 5px 7px 6px;
+    display: inline-grid;
+    min-height: 34px;
+    place-items: center;
+    padding: 5px 8px;
     border-radius: 10px;
     font-size: 15px;
+    line-height: 1;
+    text-align: center;
   }
 
   .hint {
-    margin: 3px 0 6px;
+    min-height: 15px;
+    margin: 0 0 2px;
     font-size: 9px;
+    line-height: 1.25;
   }
 
   .controls {
@@ -576,37 +605,50 @@
   }
 
   .controls > button {
+    display: grid;
     width: 38px;
     height: 38px;
+    place-items: center;
     border-radius: 13px;
+    line-height: 1;
   }
 
   .listen {
+    min-height: 38px;
     font-size: 10px;
+    line-height: 1.1;
+    text-align: center;
   }
 
   .lessonList {
-    grid-auto-columns: 72px;
+    grid-auto-columns: 78px;
     gap: 6px;
-    padding-bottom: 3px;
+    min-height: 61px;
+    padding: 1px 1px 4px;
   }
 
   .lessonList button {
-    height: 51px;
-    gap: 2px;
-    padding: 3px;
+    height: 57px;
+    gap: 3px;
+    padding: 4px;
     border-radius: 14px;
   }
 
   .lessonList img,
   .thumbnailPending {
-    width: 35px;
-    height: 27px;
-    flex-basis: 27px;
+    width: 43px;
+    height: 32px;
+    flex-basis: 32px;
     border-radius: 8px;
+    object-fit: contain;
+    background: #f4efff;
   }
 
   .lessonList b {
-    font-size: 7px;
+    display: block;
+    min-height: 10px;
+    font-size: 7.5px;
+    line-height: 10px;
+    text-align: center;
   }
 }
